@@ -1,0 +1,32 @@
+asyncpg==0.30.0
+aiomysql==0.2.0
+pymongo==4.14.1
+motor==3.7.1  # Async MongoDB driver
+pydantic==1.10.22
+email_validator
+phonenumbers
+bcrypt
+bson
+hypercorn
+uvloop
+cryptography
+PyJWT
+markdown==3.4.1
+bleach==6.0.0
+beautifulsoup4==4.11.1
+
+# Testing dependencies
+pytest==7.4.0
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+pytest-xdist==3.3.1
+httpx==0.25.0
+faker==19.3.0
+locust==2.15.1
+bandit==1.7.5
+safety==2.3.5
+mypy==1.5.1
+black==23.7.0
+isort==5.12.0
+flake8==6.0.0
