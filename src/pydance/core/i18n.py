@@ -6,9 +6,13 @@ import json
 from typing import Dict, Any, Optional
 from pathlib import Path
 
+# Import the new i18n system
+from ..i18n.translations import Translations, gettext as _gettext, ngettext as _ngettext
+from ..i18n.utils import get_locale as _get_locale, set_locale as _set_locale, get_timezone as _get_timezone, set_timezone as _set_timezone
+
 
 class I18n:
-    """Internationalization manager"""
+    """Internationalization manager - backward compatibility layer"""
 
     _instance = None
     _translations: Dict[str, Dict[str, str]] = {}
@@ -93,25 +97,31 @@ class I18n:
         else:
             # Fallback to English if locale not found
             self._current_locale = 'en'
+        # Also set in the new system
+        _set_locale(locale)
 
     def get_locale(self) -> str:
         """Get current locale"""
-        return self._current_locale
+        return _get_locale()
 
     def translate(self, key: str, **kwargs) -> str:
         """Translate a message key"""
-        translations = self._translations.get(self._current_locale, self._translations.get('en', {}))
+        # Try the new system first
+        try:
+            return _gettext(key, **kwargs)
+        except:
+            # Fall back to old system
+            translations = self._translations.get(self._current_locale, self._translations.get('en', {}))
+            message = translations.get(key, key)  # Fallback to key if translation not found
 
-        message = translations.get(key, key)  # Fallback to key if translation not found
+            # Format message with kwargs
+            if kwargs:
+                try:
+                    message = message.format(**kwargs)
+                except (KeyError, ValueError):
+                    pass  # Keep original message if formatting fails
 
-        # Format message with kwargs
-        if kwargs:
-            try:
-                message = message.format(**kwargs)
-            except (KeyError, ValueError):
-                pass  # Keep original message if formatting fails
-
-        return message
+            return message
 
     def add_translation(self, locale: str, key: str, message: str):
         """Add a translation for a specific locale"""
@@ -142,6 +152,16 @@ def set_locale(locale: str):
 def get_locale() -> str:
     """Get current locale"""
     return i18n.get_locale()
+
+
+def set_timezone(timezone: str):
+    """Set current timezone"""
+    _set_timezone(timezone)
+
+
+def get_timezone() -> str:
+    """Get current timezone"""
+    return _get_timezone()
 
 
 # Context manager for temporary locale changes

@@ -261,7 +261,7 @@ def ensure_static_dirs(static_dir: str = "static"):
 # Example usage and integration
 if __name__ == "__main__":
     # Example of how to use static file serving
-    from ..application import Application
+    from ..server.application import Application
 
     app = Application()
 

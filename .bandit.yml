@@ -1,0 +1,27 @@
+exclude_dirs:
+  - tests
+  - examples
+  - docs
+  - .tox
+  - .venv
+  - venv
+  - env
+  - build
+  - dist
+  - .eggs
+  - "*.egg"
+  - .mypy_cache
+  - .pytest_cache
+  - htmlcov
+  - .coverage
+  - .vscode
+  - .idea
+
+skips:
+  - B101  # assert_used - We use asserts in tests
+  - B601  # shell_injection - We handle this with proper validation
+  - B603  # subprocess_without_shell_equals_true - We use shell=False
+  - B607  # start_process_with_partial_path - We use full paths
+
+confidence: MEDIUM
+severity: MEDIUM

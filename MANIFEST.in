@@ -1,0 +1,120 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+include SECURITY.md
+include AUTHORS.md
+include requirements.txt
+include pyproject.toml
+
+# Documentation
+recursive-include docs *.md
+recursive-include docs *.rst
+recursive-include docs *.txt
+recursive-include docs *.py
+recursive-include docs *.yml
+recursive-include docs *.yaml
+
+# Examples
+recursive-include examples *.py
+recursive-include examples *.md
+recursive-include examples *.txt
+recursive-include examples *.yml
+recursive-include examples *.yaml
+recursive-include examples *.json
+recursive-include examples *.html
+recursive-include examples *.css
+recursive-include examples *.js
+
+# Static files
+recursive-include src/pydance/static *.css
+recursive-include src/pydance/static *.js
+recursive-include src/pydance/static *.png
+recursive-include src/pydance/static *.jpg
+recursive-include src/pydance/static *.jpeg
+recursive-include src/pydance/static *.gif
+recursive-include src/pydance/static *.svg
+recursive-include src/pydance/static *.ico
+recursive-include src/pydance/static *.woff
+recursive-include src/pydance/static *.woff2
+recursive-include src/pydance/static *.ttf
+recursive-include src/pydance/static *.eot
+
+# Templates
+recursive-include src/pydance/templates *.html
+recursive-include src/pydance/templates *.jinja
+recursive-include src/pydance/templates *.txt
+
+# Translations
+recursive-include src/pydance/translations *.json
+recursive-include src/pydance/translations *.po
+recursive-include src/pydance/translations *.mo
+
+# Configuration files
+include config.py.example
+include docker-compose.yml
+include Dockerfile
+include .dockerignore
+include nginx.conf.example
+include gunicorn.conf.py
+
+# CI/CD
+recursive-include .github *.yml
+recursive-include .github *.yaml
+recursive-include .github *.json
+recursive-include .github *.md
+
+# Development tools
+include tox.ini
+include .pre-commit-config.yaml
+include .flake8
+include .mypy.ini
+include .coveragerc
+include .isort.cfg
+include .editorconfig
+include .pylintrc
+
+# Scripts
+include manage.py
+include scripts/*.py
+include scripts/*.sh
+
+# API documentation
+include api_docs_swagger.html
+include api_docs_redoc.html
+include openapi_spec.json
+
+# C extensions
+recursive-include src *.c
+recursive-include src *.cpp
+recursive-include src *.h
+recursive-include src *.hpp
+
+# Exclude patterns
+exclude .git*
+exclude .DS_Store
+exclude *.pyc
+exclude __pycache__
+exclude .pytest_cache
+exclude .tox
+exclude .coverage
+exclude htmlcov
+exclude .mypy_cache
+exclude .vscode
+exclude .idea
+exclude *.log
+exclude .env
+exclude .venv
+exclude venv
+exclude env
+exclude build
+exclude dist
+exclude *.egg-info
+exclude .eggs
+
+# Global excludes
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude .git*

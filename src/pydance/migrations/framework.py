@@ -14,6 +14,7 @@ from .migration import Migration
 from .migrator import Migrator
 from ..database.database import DatabaseConnection
 from ..database.config import DatabaseConfig
+from ..database.backends import get_backend
 from ..models.base import BaseModel
 from ..utils.types import Field
 

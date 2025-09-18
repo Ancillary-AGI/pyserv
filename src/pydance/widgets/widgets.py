@@ -7,7 +7,7 @@ functionality, better security, and improved user experience.
 """
 
 from typing import List, Tuple, Optional, Dict, Any, Union
-from ..widgets.core import (
+from .core import (
     BaseWidget, WidgetType, ContentFormat, WidgetSecurity,
     MarkdownProcessor, WidgetValidator, WidgetTheme, WidgetSize
 )
@@ -760,7 +760,7 @@ class RichTitleWidget(BaseWidget):
 
 
 # Register widgets with factory
-from ..widgets.core import WidgetFactory
+from .core import WidgetFactory
 
 WidgetFactory.register('text', TextWidget)
 WidgetFactory.register('richtext', RichTextWidget)

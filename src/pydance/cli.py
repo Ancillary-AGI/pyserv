@@ -322,12 +322,8 @@ Examples:
     def cmd_shell(self, args):
         """Start interactive shell"""
         print("Starting Pydance shell...")
-        try:
-            import IPython
-            IPython.embed()
-        except ImportError:
-            import code
-            code.interact(local=globals())
+        import IPython
+        IPython.embed()
 
     def cmd_migrate(self, args):
         """Run database migrations"""
@@ -356,7 +352,7 @@ Examples:
             sys.exit(1)
 
         import asyncio
-        from .migrations.migrator import Migrator
+        from .database.migrations.migrator import Migrator
         from .database.config import DatabaseConfig
 
         try:

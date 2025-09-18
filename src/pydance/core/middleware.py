@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 from typing import Callable, List, Any, Coroutine, Optional, Union
 from dataclasses import dataclass
 
-from .request import Request
-from .response import Response
+from .http.request import Request
+from .http.response import Response
 from .websocket import WebSocket
 
 class BaseMiddleware(ABC):
@@ -40,3 +40,6 @@ class WebSocketMiddleware(BaseMiddleware):
 # Type aliases
 MiddlewareCallable = Callable[[Request, Callable], Coroutine[Any, Any, Response]]
 MiddlewareType = Union[MiddlewareCallable, type[HTTPMiddleware], type[WebSocketMiddleware]]
+
+# Alias for backward compatibility
+Middleware = BaseMiddleware

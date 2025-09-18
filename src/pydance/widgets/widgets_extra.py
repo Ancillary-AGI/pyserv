@@ -1156,7 +1156,7 @@ class RichCodeWidget(BaseWidget):
 
 
 # Register enhanced widgets
-from ..widgets.core import WidgetFactory
+from .core import WidgetFactory
 
 WidgetFactory.register('richfile', RichFileWidget)
 WidgetFactory.register('richdate', RichDateWidget)

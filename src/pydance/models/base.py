@@ -9,6 +9,7 @@ from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
 from motor.core import AgnosticCollection
 from bson import ObjectId
+from pymongo import ASCENDING
 
 from ..database.database import DatabaseConnection
 from ..database.config import DatabaseConfig
@@ -158,129 +159,30 @@ class BaseModel(metaclass=ModelMeta):
     async def create_table(cls):
         """Create database table for this model"""
         db = DatabaseConnection.get_instance(cls._db_config)
-
-        if cls._db_config.is_mongodb:
-            # MongoDB doesn't need table creation, but we can create indexes
-            async with db.get_connection() as conn:
-                collection = conn[cls.get_table_name()]
-
-                # Create indexes for fields marked with index=True
-                for name, field in cls._fields.items():
-                    if field.index:
-                        await collection.create_index([(name, ASCENDING)])
-
-                # Create unique indexes for fields marked with unique=True
-                for name, field in cls._fields.items():
-                    if field.unique:
-                        await collection.create_index([(name, ASCENDING)], unique=True)
-        else:
-            # SQL table creation
-            columns = []
-            for name, field in cls._fields.items():
-                columns.append(field.sql_definition(name, cls._db_config.is_sqlite))
-
-            # Add indexes
-            indexes = []
-            for name, field in cls._fields.items():
-                if field.index:
-                    index_name = f"idx_{cls.get_table_name()}_{name}"
-                    indexes.append(f"CREATE INDEX IF NOT EXISTS {index_name} ON {cls.get_table_name()}({name});")
-
-            sql = f"CREATE TABLE IF NOT EXISTS {cls.get_table_name()} ({', '.join(columns)});"
-
-            async with db.get_connection() as conn:
-                if hasattr(conn, 'execute'):
-                    # SQLite
-                    conn.execute("PRAGMA foreign_keys = ON")
-                    conn.execute(sql)
-                    for index_sql in indexes:
-                        conn.execute(index_sql)
-                    conn.commit()
-                elif hasattr(conn, 'fetch'):
-                    # PostgreSQL
-                    await conn.execute(sql)
-                    for index_sql in indexes:
-                        await conn.execute(index_sql)
-                else:
-                    # MySQL
-                    await conn.execute(sql)
-                    for index_sql in indexes:
-                        await conn.execute(index_sql)
+        await db.create_table(cls)
 
     async def save(self):
-        """Save the instance to the database"""
+        """Save the instance to the database using backend abstraction"""
         db = DatabaseConnection.get_instance(self._db_config)
 
-        if self._db_config.is_mongodb:
-            # MongoDB save operation
-            data = self.to_dict()
+        # Convert instance to dict for backend
+        data = self.to_dict()
 
-            # Remove ID if it's None for new documents
-            if 'id' in data and data['id'] is None:
-                del data['id']
+        # Get primary key field name
+        primary_key = self.get_primary_key()
+        primary_key_value = getattr(self, primary_key, None) if primary_key else None
 
-            async with db.get_connection() as conn:
-                collection = conn[self.get_table_name()]
-
-                if hasattr(self, 'id') and self.id:
-                    # Update existing document
-                    result = await collection.replace_one({'_id': ObjectId(self.id)}, data)
-                    if result.modified_count == 0:
-                        raise ValueError("Document not found or not modified")
-                else:
-                    # Insert new document
-                    result = await collection.insert_one(data)
-                    self.id = str(result.inserted_id)
+        if primary_key_value is not None:
+            # Update existing record
+            filters = {primary_key: primary_key_value}
+            success = await db.backend.update_one(self.__class__, filters, data)
+            if not success:
+                raise ValueError("Record not found or not modified")
         else:
-            # SQL save operation
-            fields = []
-            values = []
-            primary_key = self.get_primary_key()
-            primary_key_value = getattr(self, primary_key, None) if primary_key else None
-
-            for name, field in self._fields.items():
-                if name == primary_key and primary_key_value is None and field.autoincrement:
-                    continue
-
-                value = getattr(self, name, None)
-                if value is not None or field.nullable:
-                    fields.append(name)
-                    values.append(value)
-
-            if primary_key_value is not None:
-                # Update existing record
-                set_clause = ', '.join([f"{f} = {self._get_param_placeholder(i+1)}" for i, f in enumerate(fields)])
-                sql = f"UPDATE {self.get_table_name()} SET {set_clause} WHERE {primary_key} = {self._get_param_placeholder(len(fields) + 1)}"
-                values.append(primary_key_value)
-            else:
-                # Insert new record
-                placeholders = ', '.join([self._get_param_placeholder(i+1) for i in range(len(fields))])
-                sql = f"INSERT INTO {self.get_table_name()} ({', '.join(fields)}) VALUES ({placeholders})"
-                if not self._db_config.is_sqlite and primary_key:
-                    sql += f" RETURNING {primary_key}"
-
-            async with db.get_connection() as conn:
-                if hasattr(conn, 'execute'):
-                    # SQLite
-                    cursor = conn.execute(sql, values)
-                    conn.commit()
-                    if primary_key and cursor.lastrowid:
-                        setattr(self, primary_key, cursor.lastrowid)
-                elif hasattr(conn, 'fetchrow'):
-                    # PostgreSQL
-                    if primary_key_value is None and primary_key:
-                        result = await conn.fetchrow(sql, *values)
-                        if result and primary_key in result:
-                            setattr(self, primary_key, result[primary_key])
-                    else:
-                        await conn.execute(sql, *values)
-                else:
-                    # MySQL
-                    await conn.execute(sql, values)
-                    if primary_key_value is None and primary_key:
-                        result = await conn.fetchone()
-                        if result and primary_key in result:
-                            setattr(self, primary_key, result[primary_key])
+            # Insert new record
+            result = await db.backend.insert_one(self.__class__, data)
+            if primary_key and result:
+                setattr(self, primary_key, result)
 
     @classmethod
     async def get(cls, id: Union[int, str]) -> Optional['BaseModel']:
@@ -299,32 +201,18 @@ class BaseModel(metaclass=ModelMeta):
         return instance
 
     async def delete(self):
-        """Delete the instance from the database"""
+        """Delete the instance from the database using backend abstraction"""
         primary_key = self.get_primary_key()
         if not primary_key or not hasattr(self, primary_key):
             raise ValueError("Cannot delete object without primary key")
 
         db = DatabaseConnection.get_instance(self._db_config)
 
-        if self._db_config.is_mongodb:
-            # MongoDB delete operation
-            async with db.get_connection() as conn:
-                collection = conn[self.get_table_name()]
-                result = await collection.delete_one({'_id': ObjectId(getattr(self, primary_key))})
-                if result.deleted_count == 0:
-                    raise ValueError("Document not found")
-        else:
-            # SQL delete operation
-            sql = f"DELETE FROM {self.get_table_name()} WHERE {primary_key} = {self._get_param_placeholder(1)}"
-
-            async with db.get_connection() as conn:
-                if hasattr(conn, 'execute'):
-                    conn.execute(sql, [getattr(self, primary_key)])
-                    conn.commit()
-                elif hasattr(conn, 'fetch'):
-                    await conn.execute(sql, getattr(self, primary_key))
-                else:
-                    await conn.execute(sql, getattr(self, primary_key))
+        # Use backend delete method
+        filters = {primary_key: getattr(self, primary_key)}
+        success = await db.backend.delete_one(self.__class__, filters)
+        if not success:
+            raise ValueError("Record not found")
 
     def to_dict(self, include_relations: bool = False) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -355,13 +243,3 @@ class BaseModel(metaclass=ModelMeta):
 
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.to_dict()}>"
-
-    @classmethod
-    def _get_param_placeholder(cls, index: int) -> str:
-        """Get parameter placeholder based on database type"""
-        if cls._db_config.is_sqlite:
-            return '?'
-        elif cls._db_config.is_mysql:
-            return '%s'
-        else:
-            return f"${index}"

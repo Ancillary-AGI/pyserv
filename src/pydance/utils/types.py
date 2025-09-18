@@ -1,6 +1,8 @@
 from typing import Any, Callable, Optional, Union, Dict, List, Type, get_origin, get_args, Awaitable
 from enum import Enum
-from core.config import DatabaseConfig
+from ..database.config import DatabaseConfig
+from ..database.backends import get_backend
+from ..core.exceptions import ValidationError, FieldValidationError
 from pydantic import BaseModel, Field as PydanticField, validator
 from datetime import datetime, date, time
 import inspect
@@ -9,8 +11,7 @@ import re
 import json
 from decimal import Decimal
 from email_validator import validate_email, EmailNotValidError
-from phonenumbers import parse as parse_phone, is_valid_number, format_number, PhoneNumberFormat
-from phonenumbers import NumberParseException
+from phonenumbers import parse as parse_phone, is_valid_number, format_number, PhoneNumberFormat, NumberParseException
 
 
 class FieldType(str, Enum):
@@ -115,86 +116,50 @@ class Field:
             self.default = str(uuid.uuid4())
     
     def sql_definition(self, name: str, db_config: DatabaseConfig) -> str:
-        """Generate SQL column definition"""
-        parts = [name]
-        
-        # Handle field type differences between databases
-        type_mapping = self._get_type_mapping(db_config)
-        db_type = type_mapping.get(self.field_type, self.field_type.value)
-        parts.append(db_type)
-        
+        """Generate SQL column definition using backend abstraction"""
+        backend = get_backend(db_config)
+
+        # Use backend to get SQL type
+        sql_type = backend.get_sql_type(self)
+        parts = [name, sql_type]
+
         if self.primary_key:
             parts.append("PRIMARY KEY")
             if self.autoincrement:
+                # Use backend-specific autoincrement syntax
                 if db_config.is_sqlite:
                     parts.append("AUTOINCREMENT")
                 elif db_config.is_mysql:
                     parts.append("AUTO_INCREMENT")
-        
+                elif db_config.is_postgres:
+                    parts.append("GENERATED ALWAYS AS IDENTITY")
+
         if not self.nullable:
             parts.append("NOT NULL")
-            
+
         if self.unique:
             parts.append("UNIQUE")
-            
+
         if self.default is not None:
-            default_str = self._format_default(db_config)
+            default_str = backend.format_default_value(self.default)
             parts.append(f"DEFAULT {default_str}")
-        
+
         if self.foreign_key:
-            parts.append(self._format_foreign_key(db_config))
-        
+            fk_str = backend.format_foreign_key(self.foreign_key)
+            parts.append(fk_str)
+
         if self.after and db_config.is_mysql:
             parts.append(f"AFTER {self.after}")
-                
+
         return " ".join(parts)
-    
-    def _get_type_mapping(self, db_config: DatabaseConfig) -> Dict[FieldType, str]:
-        """Get database-specific type mappings"""
-        if db_config.is_mysql:
-            return {
-                FieldType.BOOLEAN: "TINYINT(1)",
-                FieldType.UUID: "CHAR(36)",
-                FieldType.JSON: "JSON",
-                FieldType.TIMESTAMPTZ: "TIMESTAMP",
-            }
-        elif db_config.is_postgresql:
-            return {
-                FieldType.BOOLEAN: "BOOLEAN",
-                FieldType.UUID: "UUID",
-                FieldType.JSON: "JSONB",
-                FieldType.TIMESTAMPTZ: "TIMESTAMPTZ",
-            }
-        elif db_config.is_sqlite:
-            return {
-                FieldType.BOOLEAN: "INTEGER",
-                FieldType.UUID: "TEXT",
-                FieldType.JSON: "TEXT",
-                FieldType.TIMESTAMPTZ: "TEXT",
-            }
-        return {}
-    
-    def _format_default(self, db_config: DatabaseConfig) -> str:
-        """Format default value for SQL"""
-        if isinstance(self.default, str):
-            if self.default.upper() in ['CURRENT_TIMESTAMP', 'CURRENT_DATE']:
-                return self.default
-            return f"'{self.default}'"
-        elif isinstance(self.default, (int, float, Decimal)):
-            return str(self.default)
-        elif isinstance(self.default, bool):
-            return '1' if self.default else '0' if db_config.is_mysql else 'TRUE' if self.default else 'FALSE'
-        elif self.default is None:
-            return 'NULL'
-        return f"'{str(self.default)}'"
-    
-    def _format_foreign_key(self, db_config: DatabaseConfig) -> str:
-        """Format foreign key constraint"""
-        ref_table, ref_column = self.foreign_key.split('.')
-        if db_config.is_mysql:
-            return f"FOREIGN KEY REFERENCES {ref_table}({ref_column})"
-        else:
-            return f"REFERENCES {ref_table}({ref_column})"
+
+    def get_type_mapping(self, db_config: DatabaseConfig) -> Dict[FieldType, str]:
+        """Get database-specific type mappings using backend"""
+        backend = get_backend(db_config)
+        # This method delegates to backend for type mappings
+        return backend.get_type_mappings()
+
+
 
 # Predefined specialized field types
 class IntegerField(Field):
@@ -441,32 +406,35 @@ class ForeignKeyField(Field):
 
 class PasswordField(StringField):
     """Password field with hashing"""
-    
+
     def __init__(self, min_length: int = 8, require_special: bool = True, **kwargs):
         kwargs.setdefault('min_length', min_length)
         super().__init__(**kwargs)
         self.require_special = require_special
-    
+
     def validate(self, value: str) -> bool:
         """Validate password strength"""
         if not value or len(value) < self.min_length:
             return False
-        
+
         if self.require_special:
             # Check for at least one special character
             if not re.search(r'[!@#$%^&*(),.?":{}|<>]', value):
                 return False
-        
+
         # Check for at least one number and one letter
         if not (re.search(r'\d', value) and re.search(r'[a-zA-Z]', value)):
             return False
-        
+
         return True
-    
+
     def hash_password(self, password: str) -> str:
         """Hash password (implement proper hashing in production)"""
         import hashlib
         return hashlib.sha256(password.encode()).hexdigest()
+
+
+
 
 class FileField(Field):
     """File upload field"""

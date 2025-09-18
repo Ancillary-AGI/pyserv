@@ -15,6 +15,7 @@ import inspect
 
 from ..database.database import DatabaseConnection
 from ..database.config import DatabaseConfig
+from ..database.backends import get_backend
 from ..utils.types import Field, Relationship, RelationshipType, OrderDirection, PaginatedResponse, AggregationResult, LazyLoad
 
 T = TypeVar('T')
@@ -26,6 +27,8 @@ class QueryBuilder(Generic[T]):
 
     def __init__(self, model_class: Type[T]):
         self.model_class = model_class
+        self.db = DatabaseConnection.get_instance(self.model_class._db_config)
+        self.backend = self.db.backend
         self.conditions: List[str] = []
         self.params: List[Any] = []
         self._limit: Optional[int] = None
@@ -39,7 +42,7 @@ class QueryBuilder(Generic[T]):
         self._having_params: List[Any] = []
         self._param_counter = 1
         self._lazy_loading_enabled: bool = True
-        self._mongo_filter: Dict[str, Any] = {}
+        self._filter_criteria: Dict[str, Any] = {}
 
     def copy(self) -> 'QueryBuilder[T]':
         """Create a copy of the query builder"""
@@ -65,93 +68,50 @@ class QueryBuilder(Generic[T]):
         return self
 
     def _get_next_param_placeholder(self) -> str:
-        """Get the next parameter placeholder based on database type"""
-        if self.model_class._db_config.is_sqlite:
-            return '?'
-        elif self.model_class._db_config.is_mysql:
-            return '%s'
-        else:
-            placeholder = f"${self._param_counter}"
+        """Get the next parameter placeholder using backend"""
+        placeholder = self.backend.get_param_placeholder(self._param_counter)
+        if placeholder == "$":
+            # For PostgreSQL-style placeholders
             self._param_counter += 1
-            return placeholder
+            return f"${self._param_counter}"
+        return placeholder
 
     def filter(self, **kwargs) -> 'QueryBuilder[T]':
         """Add filter conditions and return self for chaining"""
-        if self.model_class._db_config.is_mongodb:
-            # Handle MongoDB filtering
-            for key, value in kwargs.items():
-                if '__' in key:
-                    field, operator = key.split('__', 1)
-                    if operator == 'in':
-                        self._mongo_filter[field] = {'$in': value}
-                    elif operator == 'gt':
-                        self._mongo_filter[field] = {'$gt': value}
-                    elif operator == 'lt':
-                        self._mongo_filter[field] = {'$lt': value}
-                    elif operator == 'gte':
-                        self._mongo_filter[field] = {'$gte': value}
-                    elif operator == 'lte':
-                        self._mongo_filter[field] = {'$lte': value}
-                    elif operator == 'neq':
-                        self._mongo_filter[field] = {'$ne': value}
-                    elif operator == 'like':
-                        self._mongo_filter[field] = {'$regex': f'.*{value}.*', '$options': 'i'}
-                    elif operator == 'ilike':
-                        self._mongo_filter[field] = {'$regex': f'.*{value}.*', '$options': 'i'}
-                else:
-                    self._mongo_filter[key] = value
-        else:
-            # SQL databases
-            for key, value in kwargs.items():
-                if '__' in key:
-                    field, operator = key.split('__', 1)
-                    if operator == 'in':
-                        placeholders = ', '.join([self._get_next_param_placeholder() for _ in range(len(value))])
-                        self.conditions.append(f"{field} IN ({placeholders})")
-                        self.params.extend(value)
-                    elif operator == 'like':
-                        placeholder = self._get_next_param_placeholder()
-                        self.conditions.append(f"{field} LIKE {placeholder}")
-                        self.params.append(f"%{value}%")
-                    elif operator == 'ilike':
-                        if self.model_class._db_config.is_mysql:
-                            # MySQL uses different syntax for case-insensitive search
-                            placeholder = self._get_next_param_placeholder()
-                            self.conditions.append(f"LOWER({field}) LIKE LOWER({placeholder})")
-                            self.params.append(f"%{value}%")
-                        else:
-                            placeholder = self._get_next_param_placeholder()
-                            self.conditions.append(f"{field} ILIKE {placeholder}")
-                            self.params.append(f"%{value}%")
-                    elif operator == 'gt':
-                        placeholder = self._get_next_param_placeholder()
-                        self.conditions.append(f"{field} > {placeholder}")
-                        self.params.append(value)
-                    elif operator == 'lt':
-                        placeholder = self._get_next_param_placeholder()
-                        self.conditions.append(f"{field} < {placeholder}")
-                        self.params.append(value)
-                    elif operator == 'gte':
-                        placeholder = self._get_next_param_placeholder()
-                        self.conditions.append(f"{field} >= {placeholder}")
-                        self.params.append(value)
-                    elif operator == 'lte':
-                        placeholder = self._get_next_param_placeholder()
-                        self.conditions.append(f"{field} <= {placeholder}")
-                        self.params.append(value)
-                    elif operator == 'neq':
-                        placeholder = self._get_next_param_placeholder()
-                        self.conditions.append(f"{field} != {placeholder}")
-                        self.params.append(value)
-                    elif operator == 'is_null':
-                        self.conditions.append(f"{field} IS NULL")
-                    elif operator == 'is_not_null':
-                        self.conditions.append(f"{field} IS NOT NULL")
-                else:
-                    placeholder = self._get_next_param_placeholder()
-                    self.conditions.append(f"{key} = {placeholder}")
-                    self.params.append(value)
+        # Use backend-agnostic filtering
+        for key, value in kwargs.items():
+            if '__' in key:
+                field, operator = key.split('__', 1)
+                self._add_filter_condition(field, operator, value)
+            else:
+                self._add_filter_condition(key, 'eq', value)
         return self
+
+    def _add_filter_condition(self, field: str, operator: str, value: Any):
+        """Add a filter condition - ALL logic moved to backends"""
+        # Build unified filter criteria that works across all backends
+        if operator == 'in':
+            self._filter_criteria[field] = {'$in': value}
+        elif operator == 'gt':
+            self._filter_criteria[field] = {'$gt': value}
+        elif operator == 'lt':
+            self._filter_criteria[field] = {'$lt': value}
+        elif operator == 'gte':
+            self._filter_criteria[field] = {'$gte': value}
+        elif operator == 'lte':
+            self._filter_criteria[field] = {'$lte': value}
+        elif operator == 'neq':
+            self._filter_criteria[field] = {'$ne': value}
+        elif operator == 'like':
+            self._filter_criteria[field] = {'$regex': f'.*{value}.*', '$options': 'i'}
+        elif operator == 'ilike':
+            self._filter_criteria[field] = {'$regex': f'.*{value}.*', '$options': 'i'}
+        elif operator == 'is_null':
+            self._filter_criteria[field] = None
+        elif operator == 'is_not_null':
+            self._filter_criteria[field] = {'$ne': None}
+        else:  # eq
+            self._filter_criteria[field] = value
 
     def limit(self, limit: int) -> 'QueryBuilder[T]':
         """Set query limit and return self"""
@@ -234,65 +194,35 @@ class QueryBuilder(Generic[T]):
         return sql, all_params
 
     async def execute(self) -> List[T]:
-        """Execute the query and return results"""
-        db = DatabaseConnection.get_instance(self.model_class._db_config)
+        """Execute the query and return results using backend abstraction"""
+        # Build query parameters for the backend
+        query_params = {
+            'select_fields': self._select_fields,
+            'distinct': self._distinct,
+            'filters': self._filter_criteria,
+            'limit': self._limit,
+            'offset': self._offset,
+            'order_by': self._order_by,
+            'group_by': self._group_by,
+            'having': self._having_conditions
+        }
 
-        if self.model_class._db_config.is_mongodb:
-            # MongoDB execution
-            async with db.get_connection() as conn:
-                collection = conn[self.model_class.get_table_name()]
+        # Execute using backend's query builder method
+        results = await self.backend.execute_query_builder(self.model_class, query_params)
 
-                # Build find options
-                find_options = {}
-                if self._limit:
-                    find_options['limit'] = self._limit
-                if self._offset:
-                    find_options['skip'] = self._offset
+        # Convert results to model instances
+        instances = []
+        for result in results:
+            instance = self.model_class(**result)
+            instances.append(instance)
 
-                # Build sort
-                if self._order_by:
-                    sort_list = []
-                    for field, direction in self._order_by:
-                        sort_list.append((field, ASCENDING if direction == OrderDirection.ASC else DESCENDING))
-                    find_options['sort'] = sort_list
+        # Prefetch relationships to prevent N+1 queries
+        if self._prefetch_relations:
+            await self._prefetch_relationships(instances)
 
-                # Execute query
-                cursor = collection.find(self._mongo_filter, find_options)
-                rows = await cursor.to_list(length=None)
+        return instances
 
-                # Convert MongoDB ObjectId to string for ID field
-                for row in rows:
-                    if '_id' in row:
-                        row['id'] = str(row['_id'])
-                        del row['_id']
 
-                instances = [self.model_class(**row) for row in rows]
-
-                # Prefetch relationships to prevent N+1 queries
-                if self._prefetch_relations:
-                    await self._prefetch_relationships(instances)
-
-                return instances
-        else:
-            # SQL execution
-            sql, params = self._build_sql()
-
-            async with db.get_connection() as conn:
-                if hasattr(conn, 'execute'):
-                    # SQLite
-                    cursor = conn.execute(sql, params)
-                    rows = cursor.fetchall()
-                else:
-                    # PostgreSQL
-                    rows = await conn.fetch(sql, *params)
-
-            instances = [self.model_class(**dict(row)) for row in rows]
-
-            # Prefetch relationships to prevent N+1 queries if lazy loading is disabled
-            if not self._lazy_loading_enabled and self._prefetch_relations:
-                await self._prefetch_relationships(instances)
-
-            return instances
 
     async def _prefetch_relationships(self, instances: List[T]):
         """Prefetch relationships to avoid N+1 queries"""
@@ -375,33 +305,24 @@ class QueryBuilder(Generic[T]):
             }).execute()
 
     async def count(self) -> int:
-        """Return count of matching records"""
-        db = DatabaseConnection.get_instance(self.model_class._db_config)
+        """Return count of matching records using backend abstraction"""
+        # Build query parameters for the backend
+        query_params = {
+            'select_fields': [],
+            'distinct': False,
+            'filters': self._filter_criteria,
+            'limit': None,
+            'offset': None,
+            'order_by': [],
+            'group_by': [],
+            'having': []
+        }
 
-        if self.model_class._db_config.is_mongodb:
-            # MongoDB count
-            async with db.get_connection() as conn:
-                collection = conn[self.model_class.get_table_name()]
-                return await collection.count_documents(self._mongo_filter)
-        else:
-            # Build count query
-            where_clause = f"WHERE {' AND '.join(self.conditions)}" if self.conditions else ""
-            group_by_clause = f"GROUP BY {', '.join(self._group_by)}" if self._group_by else ""
+        # Execute using backend's query builder method and count results
+        results = await self.backend.execute_query_builder(self.model_class, query_params)
+        return len(results)
 
-            if self._group_by:
-                # For grouped queries, we need to count the groups
-                sql = f"SELECT COUNT(*) as count FROM (SELECT 1 FROM {self.model_class.get_table_name()} {where_clause} {group_by_clause}) as subquery"
-            else:
-                sql = f"SELECT COUNT(*) as count FROM {self.model_class.get_table_name()} {where_clause}"
 
-            async with db.get_connection() as conn:
-                if hasattr(conn, 'execute'):
-                    cursor = conn.execute(sql, self.params)
-                    result = cursor.fetchone()
-                    return result['count'] if result else 0
-                else:
-                    result = await conn.fetchval(sql, *self.params)
-                    return result or 0
 
     async def first(self) -> Optional[T]:
         """Return first matching record"""
@@ -430,29 +351,33 @@ class QueryBuilder(Generic[T]):
         )
 
     async def aggregate(self, **aggregations: str) -> AggregationResult:
-        """Perform aggregation operations"""
-        db = DatabaseConnection.get_instance(self.model_class._db_config)
+        """Perform aggregation operations using backend abstraction"""
+        # Convert filters to backend format
+        filters = self._convert_filters_to_backend()
 
-        agg_functions = []
+        # Convert aggregations to backend format
+        pipeline = []
         for field, func in aggregations.items():
-            agg_functions.append(f"{func.upper()}({field}) as {field}_{func}")
+            if func == 'count':
+                pipeline.append({'$group': {'_id': None, f'{field}_count': {'$sum': 1}}})
+            elif func == 'sum':
+                pipeline.append({'$group': {'_id': None, f'{field}_sum': {'$sum': f'${field}'}}})
+            elif func == 'avg':
+                pipeline.append({'$group': {'_id': None, f'{field}_avg': {'$avg': f'${field}'}}})
+            elif func == 'min':
+                pipeline.append({'$group': {'_id': None, f'{field}_min': {'$min': f'${field}'}}})
+            elif func == 'max':
+                pipeline.append({'$group': {'_id': None, f'{field}_max': {'$max': f'${field}'}}})
 
-        where_clause = f"WHERE {' AND '.join(self.conditions)}" if self.conditions else ""
-        group_by_clause = f"GROUP BY {', '.join(self._group_by)}" if self._group_by else ""
+        # Use backend aggregate method
+        results = await self.backend.aggregate(self.model_class, pipeline)
 
-        sql = f"SELECT {', '.join(agg_functions)} FROM {self.model_class.get_table_name()} {where_clause} {group_by_clause}"
-
-        async with db.get_connection() as conn:
-            if hasattr(conn, 'execute'):
-                cursor = conn.execute(sql, self.params)
-                result = cursor.fetchone()
-            else:
-                result = await conn.fetchrow(sql, *self.params)
-
+        # Convert results to AggregationResult
         agg_result = AggregationResult()
-        if result:
+        if results:
+            result = results[0] if results else {}
             for field, func in aggregations.items():
-                value = result.get(f"{field}_{func}")
+                value = result.get(f'{field}_{func}')
                 if func == 'count':
                     agg_result.count = value or 0
                 elif func == 'sum':
@@ -465,3 +390,67 @@ class QueryBuilder(Generic[T]):
                     agg_result.max = value
 
         return agg_result
+
+
+
+    def _convert_filters_to_backend(self) -> Dict[str, Any]:
+        """Convert query filters to backend-compatible format"""
+        if self.model_class._db_config.is_mongodb:
+            # For MongoDB, use the filter criteria directly
+            return self._filter_criteria
+        else:
+            # For SQL databases, build a filter dict from conditions and params
+            filters = {}
+            if self.conditions:
+                # Convert SQL conditions to a simple key-value filter dict
+                # This is a simplified approach - complex conditions would need more parsing
+                for i, condition in enumerate(self.conditions):
+                    # Simple parsing for basic conditions like "field = ?" or "field > ?"
+                    if ' = ' in condition:
+                        field, _ = condition.split(' = ', 1)
+                        filters[field.strip()] = self.params[i] if i < len(self.params) else None
+                    elif ' > ' in condition:
+                        field, _ = condition.split(' > ', 1)
+                        filters[field.strip()] = {'$gt': self.params[i] if i < len(self.params) else None}
+                    elif ' < ' in condition:
+                        field, _ = condition.split(' < ', 1)
+                        filters[field.strip()] = {'$lt': self.params[i] if i < len(self.params) else None}
+                    elif ' >= ' in condition:
+                        field, _ = condition.split(' >= ', 1)
+                        filters[field.strip()] = {'$gte': self.params[i] if i < len(self.params) else None}
+                    elif ' <= ' in condition:
+                        field, _ = condition.split(' <= ', 1)
+                        filters[field.strip()] = {'$lte': self.params[i] if i < len(self.params) else None}
+                    elif ' != ' in condition:
+                        field, _ = condition.split(' != ', 1)
+                        filters[field.strip()] = {'$ne': self.params[i] if i < len(self.params) else None}
+                    elif ' LIKE ' in condition:
+                        field, _ = condition.split(' LIKE ', 1)
+                        value = self.params[i] if i < len(self.params) else ""
+                        # Convert SQL LIKE to regex for backend compatibility
+                        regex = value.replace('%', '.*')
+                        filters[field.strip()] = {'$regex': regex, '$options': 'i'}
+                    elif ' IN ' in condition:
+                        field, _ = condition.split(' IN ', 1)
+                        # For IN clauses, take multiple parameters
+                        in_values = []
+                        param_count = condition.count('?')
+                        start_idx = i
+                        for j in range(param_count):
+                            if start_idx + j < len(self.params):
+                                in_values.append(self.params[start_idx + j])
+                        filters[field.strip()] = {'$in': in_values}
+            return filters
+
+    def _convert_sort_to_backend(self) -> Optional[List[Tuple[str, int]]]:
+        """Convert sort order to backend-compatible format"""
+        if not self._order_by:
+            return None
+
+        sort_list = []
+        for field, direction in self._order_by:
+            # Convert OrderDirection to integer (1 for ASC, -1 for DESC)
+            sort_direction = 1 if direction == OrderDirection.ASC else -1
+            sort_list.append((field, sort_direction))
+
+        return sort_list

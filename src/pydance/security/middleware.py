@@ -11,11 +11,11 @@ import hashlib
 import time
 
 from ..core.middleware import HTTPMiddleware, WebSocketMiddleware
-from ..core.request import Request
-from ..core.response import Response
-from ..core.websocket import WebSocket
-from ..core.exceptions import HTTPException, Forbidden
-from ...contrib.auth import Auth
+from ..core.http.request import Request
+from ..core.http.response import Response
+from ..core.websocket.websocket import WebSocket
+from ..core.exceptions import HTTPException, Forbidden, TooManyRequests
+from ....contrib.auth import Auth
 
 class SecurityMiddleware(HTTPMiddleware):
     """Security middleware for common web vulnerabilities"""
@@ -412,7 +412,6 @@ class RateLimitMiddleware(HTTPMiddleware, WebSocketMiddleware):
         
         # Check rate limit
         if len(self.requests.get(identifier, [])) >= self.requests_per_minute:
-            from ..exceptions import TooManyRequests
             raise TooManyRequests("Rate limit exceeded")
         
         # Record request
@@ -431,15 +430,200 @@ class RateLimitMiddleware(HTTPMiddleware, WebSocketMiddleware):
 
 class AuthenticationMiddleware(HTTPMiddleware):
     """Authentication middleware"""
-    
+
     def __init__(self, auth: Auth):
         self.auth = auth
-    
+
     async def process_request(self, request: Request) -> Request:
         user = await self.auth.get_user_from_request(request)
         if user:
             request.state.user = user
         return request
-        
+
     async def process_response(self, request: Request, response: Response) -> Response:
         return response
+
+
+# Quantum Security Middleware
+from .quantum_security import (
+    get_quantum_security_manager,
+    QuantumAlgorithm,
+    quantum_authenticate,
+    establish_secure_channel
+)
+
+
+class QuantumSecurityMiddleware(HTTPMiddleware):
+    """Quantum-resistant security middleware"""
+
+    def __init__(self, **options):
+        self.options = {
+            'require_quantum_auth': False,
+            'quantum_header_name': 'X-Quantum-Auth',
+            'channel_header_name': 'X-Secure-Channel',
+            'auto_establish_channel': True,
+            'force_quantum_tls': False,  # Future: quantum key exchange for TLS
+            **options
+        }
+        self.quantum_manager = get_quantum_security_manager()
+
+    async def process_request(self, request: Request) -> Request:
+        # Check if quantum authentication is required
+        if self.options['require_quantum_auth']:
+            await self._validate_quantum_authentication(request)
+
+        # Check for secure channel establishment
+        if self.options['auto_establish_channel']:
+            await self._ensure_secure_channel(request)
+
+        # Add quantum security headers to request state
+        request.state.quantum_security = {
+            'enabled': True,
+            'algorithms': [alg.value for alg in self.quantum_manager.providers.keys()],
+            'channel_established': hasattr(request.state, 'quantum_channel')
+        }
+
+        return request
+
+    async def process_response(self, request: Request, response: Response) -> Response:
+        # Add quantum security headers to response
+        response.headers['X-Quantum-Security'] = 'enabled'
+        response.headers['X-Supported-Algorithms'] = ','.join(
+            [alg.value for alg in self.quantum_manager.providers.keys()]
+        )
+
+        # Add channel information if established
+        if hasattr(request.state, 'quantum_channel'):
+            response.headers['X-Secure-Channel-ID'] = request.state.quantum_channel.get('channel_id', '')
+
+        return response
+
+    async def _validate_quantum_authentication(self, request: Request):
+        """Validate quantum-resistant authentication"""
+        # Check for quantum auth header
+        quantum_token = request.headers.get(self.options['quantum_header_name'])
+        if not quantum_token:
+            raise Forbidden("Quantum authentication required")
+
+        # Extract identity from token or request
+        identity = self._extract_identity(request)
+
+        # Perform quantum authentication
+        try:
+            auth_result = await quantum_authenticate(identity)
+            request.state.quantum_auth = auth_result
+            request.state.quantum_authenticated = True
+        except Exception as e:
+            raise Forbidden(f"Quantum authentication failed: {str(e)}")
+
+    async def _ensure_secure_channel(self, request: Request):
+        """Ensure a quantum-secure channel is established"""
+        channel_id = request.headers.get(self.options['channel_header_name'])
+
+        if channel_id:
+            # Validate existing channel
+            # In production, check channel validity from a store
+            request.state.quantum_channel = {'channel_id': channel_id, 'valid': True}
+        else:
+            # Establish new channel
+            try:
+                channel_info = await establish_secure_channel()
+                request.state.quantum_channel = channel_info
+                # In production, store channel info for validation
+            except Exception as e:
+                # Log but don't fail - allow fallback to classical crypto
+                print(f"Failed to establish quantum channel: {e}")
+
+    def _extract_identity(self, request: Request) -> str:
+        """Extract user identity from request"""
+        # Try various sources for identity
+        identity = (
+            getattr(request.state, 'user_id', None) or
+            request.headers.get('X-User-ID') or
+            request.query_params.get('user_id', [''])[0] or
+            'anonymous'
+        )
+        return identity
+
+
+class QuantumWebSocketMiddleware(WebSocketMiddleware):
+    """Quantum-secure WebSocket middleware"""
+
+    def __init__(self, **options):
+        self.options = {
+            'require_quantum_auth': True,
+            'channel_timeout': 300,  # 5 minutes
+            **options
+        }
+        self.quantum_manager = get_quantum_security_manager()
+        self.active_channels = {}  # In production, use proper storage
+
+    async def process_websocket(self, websocket: WebSocket) -> Optional[WebSocket]:
+        try:
+            # Validate quantum authentication
+            if self.options['require_quantum_auth']:
+                if not await self._validate_websocket_quantum_auth(websocket):
+                    return None
+
+            # Establish quantum-secure channel
+            channel_info = await self._establish_websocket_channel(websocket)
+            if not channel_info:
+                return None
+
+            # Set quantum security state
+            websocket.state.quantum_enabled = True
+            websocket.state.quantum_channel = channel_info
+
+            # Set channel expiry
+            import time
+            websocket.state.channel_expiry = time.time() + self.options['channel_timeout']
+
+            return websocket
+
+        except Exception as e:
+            print(f"Quantum WebSocket middleware error: {e}")
+            return None
+
+    async def _validate_websocket_quantum_auth(self, websocket: WebSocket) -> bool:
+        """Validate quantum authentication for WebSocket"""
+        # Extract quantum token from various sources
+        token = (
+            websocket.query_params.get('quantum_token', [''])[0] or
+            websocket.headers.get('X-Quantum-Token') or
+            websocket.headers.get('X-Quantum-Auth')
+        )
+
+        if not token:
+            return False
+
+        # Extract identity
+        identity = (
+            websocket.query_params.get('user_id', [''])[0] or
+            websocket.headers.get('X-User-ID') or
+            'websocket_user'
+        )
+
+        try:
+            auth_result = await quantum_authenticate(identity)
+            websocket.state.quantum_auth = auth_result
+            return True
+        except Exception:
+            return False
+
+    async def _establish_websocket_channel(self, websocket: WebSocket) -> Optional[Dict]:
+        """Establish quantum-secure channel for WebSocket"""
+        try:
+            channel_info = await establish_secure_channel()
+            channel_id = channel_info['channel_id']
+
+            # Store channel info (in production, use database/redis)
+            self.active_channels[channel_id] = {
+                'info': channel_info,
+                'websocket': websocket,
+                'established_at': channel_info['established_at']
+            }
+
+            return channel_info
+        except Exception as e:
+            print(f"Failed to establish WebSocket quantum channel: {e}")
+            return None

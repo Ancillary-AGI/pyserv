@@ -9,8 +9,8 @@ import os
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from pydance.widgets.widgets import RichText, RichSelect, RichTitle
-from pydance.widgets.widgets_extra import RichFile, RichDate, RichColor, RichRating
+from src.pydance.widgets.widgets import RichText, RichSelect, RichTitle
+from src.pydance.widgets.widgets_extra import RichFile, RichDate, RichColor, RichRating
 
 def test_basic_widgets():
     """Test basic widget functionality"""

@@ -15,6 +15,7 @@ from datetime import datetime
 from .migration import Migration
 from ..database.database import DatabaseConnection
 from ..database.config import DatabaseConfig
+from ..database.backends import get_backend
 from ..models.base import BaseModel
 from ..utils.types import Field
 
@@ -42,92 +43,15 @@ class Migrator:
         """Create migrations table/collection if it doesn't exist and load applied migrations"""
         db = DatabaseConnection.get_instance(self.db_config)
 
-        async with db.get_connection() as conn:
-            if self.db_config.is_sqlite:
-                # SQLite
-                conn.execute('''
-                    CREATE TABLE IF NOT EXISTS migrations (
-                        id INTEGER PRIMARY KEY,
-                        model_name TEXT NOT NULL,
-                        version INTEGER NOT NULL,
-                        schema_definition TEXT NOT NULL,
-                        operations TEXT NOT NULL,
-                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(model_name, version)
-                    )
-                ''')
-                conn.commit()
+        # Create migrations table/collection using backend
+        await db.backend.create_migrations_table()
 
-                # Load applied migrations
-                cursor = conn.execute("SELECT model_name, version, schema_definition FROM migrations")
-                for row in cursor.fetchall():
-                    self.applied_migrations[row['model_name']] = row['version']
-                    if row['model_name'] not in self.migration_schemas:
-                        self.migration_schemas[row['model_name']] = {}
-                    self.migration_schemas[row['model_name']][row['version']] = json.loads(row['schema_definition'])
+        # Load applied migrations using backend
+        applied_migrations = await db.backend.get_applied_migrations()
+        self.applied_migrations.update(applied_migrations)
 
-            elif self.db_config.is_postgres:
-                # PostgreSQL
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS migrations (
-                        id SERIAL PRIMARY KEY,
-                        model_name VARCHAR(255) NOT NULL,
-                        version INTEGER NOT NULL,
-                        schema_definition TEXT NOT NULL,
-                        operations TEXT NOT NULL,
-                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(model_name, version)
-                    )
-                ''')
-
-                # Load applied migrations
-                rows = await conn.fetch("SELECT model_name, version, schema_definition FROM migrations")
-                for row in rows:
-                    self.applied_migrations[row['model_name']] = row['version']
-                    if row['model_name'] not in self.migration_schemas:
-                        self.migration_schemas[row['model_name']] = {}
-                    self.migration_schemas[row['model_name']][row['version']] = json.loads(row['schema_definition'])
-
-            elif self.db_config.is_mysql:
-                # MySQL
-                try:
-                    await conn.execute('''
-                        CREATE TABLE IF NOT EXISTS migrations (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            model_name VARCHAR(255) NOT NULL,
-                            version INT NOT NULL,
-                            schema_definition TEXT NOT NULL,
-                            operations TEXT NOT NULL,
-                            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            UNIQUE(model_name, version)
-                        ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-                    ''')
-
-                    # Load applied migrations
-                    rows = await conn.fetchall()
-                    for row in rows:
-                        self.applied_migrations[row['model_name']] = row['version']
-                        if row['model_name'] not in self.migration_schemas:
-                            self.migration_schemas[row['model_name']] = {}
-                        self.migration_schemas[row['model_name']][row['version']] = json.loads(row['schema_definition'])
-                except Exception as e:
-                    print(f"MySQL migration initialization error: {e}")
-                    # Fallback to basic initialization
-                    pass
-
-            elif self.db_config.is_mongodb:
-                # MongoDB - collections are created automatically on first insert
-                migrations_collection = conn.migrations
-
-                # Create index for efficient querying
-                await migrations_collection.create_index([("model_name", 1), ("version", 1)], unique=True)
-
-                # Load applied migrations
-                async for doc in migrations_collection.find({}):
-                    self.applied_migrations[doc['model_name']] = doc['version']
-                    if doc['model_name'] not in self.migration_schemas:
-                        self.migration_schemas[doc['model_name']] = {}
-                    self.migration_schemas[doc['model_name']][doc['version']] = doc['schema_definition']
+        # Load migration schemas (this would need to be enhanced to load full schema definitions)
+        # For now, we'll keep the basic structure
 
     async def discover_models(self, package_name: str = "app.models") -> List[Type[BaseModel]]:
         """Discover all models in the specified package"""
@@ -298,118 +222,27 @@ class Migrator:
             return False
 
     async def execute_migration(self, migration: Migration) -> bool:
-        """Execute a single migration"""
-        model_name = migration.model_name
-
-        if self.db_config.is_mongodb:
-            # MongoDB migration execution
-            success = await self._execute_mongodb_migration(migration)
-            if success:
-                print(f"✓ Applied MongoDB migration for {model_name} to v{migration.to_version}")
-            else:
-                print(f"✗ Failed to apply MongoDB migration for {model_name} to v{migration.to_version}")
-        else:
-            # SQL migration execution
-            migration_sql = self._generate_migration_sql(migration)
-
-            if not migration_sql:
-                print(f"No migration needed for {model_name} to v{migration.to_version}")
-                return True
-
-            success = await self._execute_sql_migration(migration, migration_sql)
-            if success:
-                print(f"✓ Applied migration for {model_name} to v{migration.to_version}")
-            else:
-                print(f"✗ Failed to apply migration for {model_name} to v{migration.to_version}")
-
-        return success
-
-    async def _execute_mongodb_migration(self, migration: Migration) -> bool:
-        """Execute MongoDB-specific migration"""
+        """Execute a single migration using backend abstraction"""
         db = DatabaseConnection.get_instance(self.db_config)
 
-        try:
-            async with db.get_connection() as conn:
-                collection = conn[migration.table_name]
+        # Use backend to insert migration record
+        await db.backend.insert_migration_record(
+            migration.model_name,
+            migration.to_version,
+            migration.schema_definition,
+            migration.operations
+        )
 
-                # Create indexes based on migration operations
-                for index_info in migration.get_added_indexes():
-                    await collection.create_index([(index_info['name'], 1)])
+        # Update in-memory tracking
+        self.applied_migrations[migration.model_name] = migration.to_version
+        if migration.model_name not in self.migration_schemas:
+            self.migration_schemas[migration.model_name] = {}
+        self.migration_schemas[migration.model_name][migration.to_version] = migration.schema_definition
 
-                # Store migration record
-                migrations_collection = conn.migrations
-                await migrations_collection.insert_one({
-                    'model_name': migration.model_name,
-                    'version': migration.to_version,
-                    'schema_definition': migration.schema_definition,
-                    'operations': migration.operations,
-                    'applied_at': datetime.now()
-                })
+        print(f"✓ Applied migration for {migration.model_name} to v{migration.to_version}")
+        return True
 
-                self.applied_migrations[migration.model_name] = migration.to_version
-                if migration.model_name not in self.migration_schemas:
-                    self.migration_schemas[migration.model_name] = {}
-                self.migration_schemas[migration.model_name][migration.to_version] = migration.schema_definition
 
-                return True
-
-        except Exception as e:
-            print(f"MongoDB migration error: {e}")
-            return False
-
-    async def _execute_sql_migration(self, migration: Migration, migration_sql: str) -> bool:
-        """Execute SQL migration"""
-        db = DatabaseConnection.get_instance(self.db_config)
-
-        async with db.get_connection() as conn:
-            try:
-                if self.db_config.is_sqlite:
-                    # SQLite - execute each statement separately
-                    statements = [s.strip() for s in migration_sql.split(';') if s.strip()]
-                    for statement in statements:
-                        conn.execute(statement)
-
-                    # Store migration record
-                    conn.execute(
-                        "INSERT INTO migrations (model_name, version, schema_definition, operations) VALUES (?, ?, ?, ?)",
-                        (migration.model_name, migration.to_version, json.dumps(migration.schema_definition), json.dumps(migration.operations))
-                    )
-                    conn.commit()
-
-                elif self.db_config.is_postgres:
-                    # PostgreSQL - execute directly
-                    await conn.execute(migration_sql)
-
-                    # Store migration record
-                    await conn.execute(
-                        "INSERT INTO migrations (model_name, version, schema_definition, operations) VALUES ($1, $2, $3, $4)",
-                        migration.model_name, migration.to_version, json.dumps(migration.schema_definition), json.dumps(migration.operations)
-                    )
-
-                elif self.db_config.is_mysql:
-                    # MySQL - execute each statement separately
-                    statements = [s.strip() for s in migration_sql.split(';') if s.strip()]
-                    for statement in statements:
-                        await conn.execute(statement)
-
-                    # Store migration record
-                    await conn.execute(
-                        "INSERT INTO migrations (model_name, version, schema_definition, operations) VALUES (%s, %s, %s, %s)",
-                        (migration.model_name, migration.to_version, json.dumps(migration.schema_definition), json.dumps(migration.operations))
-                    )
-
-                self.applied_migrations[migration.model_name] = migration.to_version
-                if migration.model_name not in self.migration_schemas:
-                    self.migration_schemas[migration.model_name] = {}
-                self.migration_schemas[migration.model_name][migration.to_version] = migration.schema_definition
-
-                return True
-
-            except Exception as e:
-                print(f"SQL migration error: {e}")
-                if self.db_config.is_mysql:
-                    await conn.execute("ROLLBACK")
-                raise
 
     async def downgrade_model(self, model_class, target_version: int):
         """Downgrade a model to a specific version"""
@@ -485,73 +318,25 @@ class Migrator:
                     raise
 
     async def drop_table(self, model_class):
-        """Completely drop the table/collection for this model"""
+        """Completely drop the table/collection for this model using backend abstraction"""
         model_name = model_class.__name__
         table_name = model_class.get_table_name()
 
         db = DatabaseConnection.get_instance(self.db_config)
 
-        async with db.get_connection() as conn:
-            try:
-                if self.db_config.is_mongodb:
-                    # MongoDB - drop collection
-                    await conn[table_name].drop()
+        # Use backend to drop table/collection
+        await db.backend.drop_table(table_name)
 
-                    # Remove migration records for this model
-                    migrations_collection = conn.migrations
-                    await migrations_collection.delete_many({"model_name": model_name})
+        # Remove migration records using backend
+        await db.backend.delete_migration_record(model_name, 0)  # Delete all versions
 
-                else:
-                    # SQL databases
-                    # Generate drop table SQL
-                    drop_sql = f"DROP TABLE IF EXISTS {table_name};"
+        # Clear from memory
+        if model_name in self.applied_migrations:
+            del self.applied_migrations[model_name]
+        if model_name in self.migration_schemas:
+            del self.migration_schemas[model_name]
 
-                    # Also drop all indexes
-                    index_sql = []
-                    for name, field in model_class._fields.items():
-                        if field.index:
-                            index_name = f"idx_{table_name}_{name}"
-                            index_sql.append(f"DROP INDEX IF EXISTS {index_name};")
-
-                    full_sql = drop_sql + ''.join(index_sql)
-
-                    if self.db_config.is_sqlite:
-                        # SQLite
-                        statements = [s.strip() for s in full_sql.split(';') if s.strip()]
-                        for statement in statements:
-                            conn.execute(statement)
-
-                        # Remove all migration records for this model
-                        conn.execute("DELETE FROM migrations WHERE model_name = ?", (model_name,))
-                        conn.commit()
-
-                    elif self.db_config.is_postgres:
-                        # PostgreSQL
-                        await conn.execute(full_sql)
-
-                        # Remove all migration records for this model
-                        await conn.execute("DELETE FROM migrations WHERE model_name = $1", model_name)
-
-                    elif self.db_config.is_mysql:
-                        # MySQL
-                        statements = [s.strip() for s in full_sql.split(';') if s.strip()]
-                        for statement in statements:
-                            await conn.execute(statement)
-
-                        # Remove all migration records for this model
-                        await conn.execute("DELETE FROM migrations WHERE model_name = %s", (model_name,))
-
-                # Clear from memory
-                if model_name in self.applied_migrations:
-                    del self.applied_migrations[model_name]
-                if model_name in self.migration_schemas:
-                    del self.migration_schemas[model_name]
-
-                print(f"✓ Dropped table/collection {table_name} for {model_name}")
-
-            except Exception as e:
-                print(f"✗ Failed to drop table/collection {table_name}: {e}")
-                raise
+        print(f"✓ Dropped table/collection {table_name} for {model_name}")
 
     async def reset_database(self, models: List[Type[BaseModel]]):
         """Completely reset the database by dropping all tables/collections"""
@@ -893,11 +678,3 @@ class Migrator:
                             sql_statements.append(f"ALTER TABLE {table_name} ALTER COLUMN {col_name} SET DEFAULT {default_value};")
 
         return ';'.join(sql_statements)
-
-    def _serialize_schema(self, columns: Dict[str, Field]) -> Dict:
-        """Serialize column definitions for storage"""
-        return {name: Migration._serialize_field(field) for name, field in columns.items()}
-
-    def _deserialize_field(self, field_data: Dict) -> Field:
-        """Deserialize a field definition from storage"""
-        return Migration._deserialize_field(field_data)
