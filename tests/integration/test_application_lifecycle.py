@@ -2,9 +2,10 @@
 Integration tests for application lifecycle and error handling
 """
 import pytest
+from unittest.mock import patch
 
-from src.pydance import Application
-from src.pydance.core.exceptions import HTTPException
+from pydance import Application
+from pydance.core.exceptions import HTTPException
 
 
 @pytest.mark.integration
@@ -30,8 +31,9 @@ class TestApplicationLifecycle:
     async def test_application_startup_shutdown(self, lifecycle_app):
         """Test application startup and shutdown"""
         # Mock database connection for startup/shutdown
-        with pytest.mock.patch('src.pydance.core.database.DatabaseConnection') as mock_db:
-            mock_instance = pytest.mock.AsyncMock()
+        with patch('src.pydance.core.database.DatabaseConnection') as mock_db:
+            from unittest.mock import AsyncMock
+            mock_instance = AsyncMock()
             mock_db.get_instance.return_value = mock_instance
 
             await lifecycle_app.startup()
