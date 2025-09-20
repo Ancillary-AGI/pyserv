@@ -5,7 +5,7 @@ from typing import AsyncGenerator
 
 import pytest
 
-from pydance.database.database import DatabaseConnection
+from pydance.core.database_pool import OptimizedDatabaseConnection
 from pydance.database.config import DatabaseConfig
 from pydance.models.base import BaseModel
 
@@ -14,7 +14,7 @@ from pydance.models.base import BaseModel
 async def db_connection():
     """Test database connection."""
     config = DatabaseConfig("sqlite:///:memory:")
-    connection = DatabaseConnection.get_instance(config)
+    connection = OptimizedDatabaseConnection.get_instance(config)
     await connection.connect()
     yield connection
     await connection.disconnect()

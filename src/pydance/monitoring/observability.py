@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import threading
 
-from ..microservices.service import Service, ServiceStatus
+from pydance.microservices.service import Service, ServiceStatus
 
 # Configure logging
 logger = logging.getLogger(__name__)

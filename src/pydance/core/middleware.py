@@ -1,7 +1,6 @@
 # server_framework/core/middleware.py
 from abc import ABC, abstractmethod
-from typing import Callable, List, Any, Coroutine, Optional, Union
-from dataclasses import dataclass
+from typing import Callable, Any, Optional, Union, Coroutine
 
 from .http.request import Request
 from .http.response import Response

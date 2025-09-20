@@ -1,165 +1,315 @@
 {
-  "openapi": "3.0.0",
+  "openapi": "3.0.3",
   "info": {
-    "title": "PyDance Quantum-Secure API",
-    "version": "2.0.0",
-    "description": "A quantum-resistant web framework API with advanced security features"
+    "title": "PyDance API",
+    "description": "High-Performance Web Framework with C/C++ Core",
+    "version": "1.0.0",
+    "contact": {
+      "name": "PyDance Team",
+      "email": "team@pydance.dev"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
   },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.pydance.dev",
+      "description": "Production server"
+    }
+  ],
   "paths": {
+    "/": {
+      "get": {
+        "summary": "Root endpoint",
+        "description": "Returns basic API information",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Welcome to PyDance API"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "running"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Returns the health status of the application",
+        "responses": {
+          "200": {
+            "description": "Application is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["healthy", "degraded", "unhealthy"],
+                      "example": "healthy"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2025-01-20T10:30:00Z"
+                    },
+                    "uptime": {
+                      "type": "number",
+                      "example": 3600
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
-        "summary": "List Users",
-        "description": "Retrieve a paginated list of users",
-        "tags": [
-          "users"
-        ],
+        "summary": "List users",
+        "description": "Retrieve a list of users with pagination",
         "parameters": [
           {
             "name": "page",
             "in": "query",
+            "description": "Page number",
+            "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 1,
               "default": 1
             }
           },
           {
             "name": "limit",
             "in": "query",
+            "description": "Number of items per page",
+            "required": false,
             "schema": {
               "type": "integer",
-              "default": 10
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
             }
           }
         ],
-        "responses": {}
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 150
+                    },
+                    "page": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "page_size": {
+                      "type": "integer",
+                      "example": 20
+                    },
+                    "total_pages": {
+                      "type": "integer",
+                      "example": 8
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "summary": "Create User",
-        "description": "Create a new user account",
-        "tags": [
-          "users"
-        ],
-        "parameters": [
-          {
-            "name": "username",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "password",
-            "in": "query",
-            "schema": {
-              "type": "string"
+        "summary": "Create user",
+        "description": "Create a new user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
             }
           }
-        ],
-        "responses": {}
+        },
+        "responses": {
+          "201": {
+            "description": "User created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/users/{user_id}": {
       "get": {
-        "summary": "Get User",
+        "summary": "Get user",
         "description": "Retrieve a specific user by ID",
-        "tags": [
-          "users"
-        ],
         "parameters": [
           {
             "name": "user_id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {}
-      }
-    },
-    "/api/v1/auth/login": {
-      "post": {
-        "summary": "User Login",
-        "description": "Authenticate user and return access token",
-        "tags": [
-          "authentication"
-        ],
-        "parameters": [
-          {
-            "name": "username",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "password",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {}
-      }
-    },
-    "/api/v1/quantum/keypair": {
-      "post": {
-        "summary": "Generate Quantum Keypair",
-        "description": "Generate a quantum-resistant cryptographic keypair",
-        "tags": [
-          "quantum"
-        ],
-        "parameters": [
-          {
-            "name": "algorithm",
-            "in": "query",
+            "description": "User ID",
             "schema": {
               "type": "string",
-              "default": "kyber"
+              "format": "uuid"
             }
           }
         ],
-        "responses": {}
-      }
-    },
-    "/api/v1/quantum/authenticate": {
-      "post": {
-        "summary": "Quantum Authentication",
-        "description": "Perform quantum-resistant authentication",
-        "tags": [
-          "quantum",
-          "authentication"
-        ],
+        "responses": {
+          "200": {
+            "description": "User found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update user",
+        "description": "Update an existing user",
         "parameters": [
           {
-            "name": "identity",
-            "in": "query",
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "User ID",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
-        "responses": {}
-      }
-    },
-    "/api/v1/system/health": {
-      "get": {
-        "summary": "System Health Check",
-        "description": "Check system health and status",
-        "tags": [
-          "system"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete user",
+        "description": "Delete a user",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "User ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
-        "parameters": [],
-        "responses": {}
+        "responses": {
+          "204": {
+            "description": "User deleted successfully"
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -169,74 +319,124 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "integer",
-            "example": 1
+            "type": "string",
+            "format": "uuid",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
           },
           "username": {
             "type": "string",
-            "example": "john_doe"
+            "example": "johndoe"
           },
           "email": {
             "type": "string",
             "format": "email",
-            "example": "john@example.com"
+            "example": "john.doe@example.com"
+          },
+          "first_name": {
+            "type": "string",
+            "example": "John"
+          },
+          "last_name": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "is_active": {
+            "type": "boolean",
+            "default": true,
+            "example": true
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "example": "2025-01-20T10:30:00Z"
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "example": "2025-01-20T10:30:00Z"
           }
         },
-        "required": [
-          "id",
-          "username",
-          "email"
-        ]
+        "required": ["id", "username", "email", "created_at"]
+      },
+      "UserCreate": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 50,
+            "example": "johndoe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "john.doe@example.com"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "example": "securepassword123"
+          },
+          "first_name": {
+            "type": "string",
+            "example": "John"
+          },
+          "last_name": {
+            "type": "string",
+            "example": "Doe"
+          }
+        },
+        "required": ["username", "email", "password"]
+      },
+      "UserUpdate": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 50,
+            "example": "johndoe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "john.doe@example.com"
+          },
+          "first_name": {
+            "type": "string",
+            "example": "John"
+          },
+          "last_name": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "is_active": {
+            "type": "boolean",
+            "example": true
+          }
+        }
       },
       "Error": {
         "type": "object",
         "properties": {
           "error": {
-            "type": "string",
-            "example": "ValidationError"
-          },
-          "message": {
-            "type": "string",
-            "example": "Invalid input data"
-          },
-          "details": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "VALIDATION_ERROR"
+              },
+              "message": {
+                "type": "string",
+                "example": "Invalid input data"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
           }
-        },
-        "required": [
-          "error",
-          "message"
-        ]
-      },
-      "QuantumKeypair": {
-        "type": "object",
-        "properties": {
-          "algorithm": {
-            "type": "string",
-            "example": "kyber"
-          },
-          "public_key": {
-            "type": "string",
-            "description": "Base64-encoded public key"
-          },
-          "private_key": {
-            "type": "string",
-            "description": "Base64-encoded private key"
-          }
-        },
-        "required": [
-          "algorithm",
-          "public_key",
-          "private_key"
-        ]
+        }
       }
     },
     "securitySchemes": {
@@ -249,31 +449,25 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-API-Key"
-      },
-      "quantumAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Quantum-Auth",
-        "description": "Quantum-resistant authentication token"
       }
     }
   },
-  "tags": [
+  "security": [
     {
-      "name": "authentication",
-      "description": "Authentication and authorization endpoints"
+      "bearerAuth": []
     },
     {
-      "name": "users",
+      "apiKey": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Users",
       "description": "User management endpoints"
     },
     {
-      "name": "quantum",
-      "description": "Quantum-resistant security endpoints"
-    },
-    {
-      "name": "system",
-      "description": "System and monitoring endpoints"
+      "name": "Health",
+      "description": "Health check endpoints"
     }
   ]
 }

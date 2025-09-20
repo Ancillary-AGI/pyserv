@@ -7,8 +7,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.pydance.models.base import BaseModel, ModelMeta
-from src.pydance.utils.types import Field
+from pydance.models.base import BaseModel, ModelMeta
+from pydance.utils.types import Field
 from typing import get_type_hints, Dict, ClassVar
 
 class TestModel(BaseModel):

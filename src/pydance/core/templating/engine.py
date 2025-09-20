@@ -18,8 +18,8 @@ class AbstractTemplateEngine:
         """Render a template string"""
         raise NotImplementedError("Subclasses must implement render_string()")
 
-class TemplateEngineManager:
-    """Main template engine manager that supports multiple template engines"""
+class TemplateEngine:
+    """Main template engine that supports multiple template engines"""
     
     def __init__(self, template_dir: str = "templates"):
         self.template_dir = Path(template_dir)

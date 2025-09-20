@@ -9,7 +9,7 @@ import pickle
 import asyncio
 from datetime import datetime, timedelta
 import aioredis
-from .storage import LocalStorage
+from pydance.core.storage import LocalStorage
 
 class CacheBackend(ABC):
     """Abstract base class for cache backends"""
@@ -252,7 +252,7 @@ def get_cache_manager(config=None) -> CacheManager:
     """Get global cache manager instance"""
     global cache_manager
     if cache_manager is None:
-        from .config import AppConfig
+        from pydance.core.config import AppConfig
         config = config or AppConfig()
         cache_manager = CacheManager(config.cache)
     return cache_manager

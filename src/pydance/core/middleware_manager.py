@@ -1,7 +1,7 @@
 # server_framework/core/middleware_manager.py
 from typing import Callable, List, Optional, Union
-from .request import Request
-from .response import Response
+from .http.request import Request
+from .http.response import Response
 from .websocket import WebSocket
 from .middleware import HTTPMiddleware, MiddlewareType, WebSocketMiddleware, MiddlewareCallable
 

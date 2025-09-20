@@ -20,7 +20,7 @@ class TestServerManagement:
 
         # Create app.py
         app_content = '''
-from src.pydance import Application
+from pydance import Application
 
 app = Application()
 
@@ -36,7 +36,7 @@ async def health(request):
 
         # Create config.py
         config_content = '''
-from src.pydance import AppConfig
+from pydance import AppConfig
 
 config = AppConfig(
     debug=True,

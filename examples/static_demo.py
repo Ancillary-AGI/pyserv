@@ -11,9 +11,9 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.pydance import Application
-from src.pydance.core import setup_static_files
-from src.pydance.widgets import RichText, RichSelect, RichTitle
+from pydance import Application
+from pydance.core import setup_static_files
+from pydance.widgets import RichText, RichSelect, RichTitle
 
 # Create application
 app = Application()

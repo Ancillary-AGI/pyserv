@@ -12,15 +12,15 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.pydance.security.quantum_security import (
+from pydance.security.quantum_security import (
     get_quantum_security_manager,
     QuantumAlgorithm,
     generate_quantum_keypair,
     establish_secure_channel,
     quantum_authenticate
 )
-from src.pydance.security.cryptography import get_crypto_manager
-from src.pydance.security.key_management import get_key_manager, HSMConfig
+from pydance.security.cryptography import get_crypto_manager
+from pydance.security.key_management import get_key_manager, HSMConfig
 
 
 async def demo_quantum_keypair_generation():
@@ -191,7 +191,7 @@ async def demo_middleware_integration():
     print("=" * 50)
 
     try:
-        from src.pydance.security.middleware import QuantumSecurityMiddleware
+        from pydance.security.middleware import QuantumSecurityMiddleware
 
         print("\n1. Testing quantum security middleware availability...")
         print("   ✓ QuantumSecurityMiddleware imported successfully")

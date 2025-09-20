@@ -5,8 +5,8 @@ Logging middleware for request/response logging.
 from typing import Optional
 from datetime import datetime
 
-from ...core.request import Request
-from ...core.response import Response
+from ...core.http.request import Request
+from ...core.http.response import Response
 from ...core.middleware import HTTPMiddleware
 from .logger import get_logger
 

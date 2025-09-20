@@ -210,17 +210,20 @@ class MongoDBBackend:
         migrations_collection = self.db.migrations
         await migrations_collection.create_index([("model_name", 1), ("version", 1)], unique=True)
 
-    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict) -> None:
+    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict, migration_id: str = None) -> None:
         """Insert a migration record for MongoDB"""
         from datetime import datetime
         migrations_collection = self.db.migrations
-        await migrations_collection.insert_one({
+        migration_doc = {
             'model_name': model_name,
             'version': version,
             'schema_definition': schema_definition,
             'operations': operations,
             'applied_at': datetime.now()
-        })
+        }
+        if migration_id:
+            migration_doc['migration_id'] = migration_id
+        await migrations_collection.insert_one(migration_doc)
 
     async def get_applied_migrations(self) -> Dict[str, int]:
         """Get all applied migrations for MongoDB"""

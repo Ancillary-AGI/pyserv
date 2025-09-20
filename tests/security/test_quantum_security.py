@@ -6,7 +6,7 @@ import asyncio
 import base64
 from unittest.mock import Mock, patch, AsyncMock
 
-from src.pydance.security.quantum_security import (
+from pydance.security.quantum_security import (
     QuantumSecurityManager,
     QuantumSecurityAgent,
     QuantumAlgorithm,
@@ -88,7 +88,7 @@ class TestQuantumSecurityAgent:
 
     @pytest.fixture
     def security_agent(self, quantum_manager):
-        from src.pydance.security.quantum_security import QuantumCapability
+        from pydance.security.quantum_security import QuantumCapability
         capabilities = [
             QuantumCapability("key_encapsulation", "Test KEM", QuantumAlgorithm.KYBER, 1.0),
             QuantumCapability("digital_signature", "Test signature", QuantumAlgorithm.DILITHIUM, 1.0)
@@ -260,7 +260,7 @@ class TestQuantumCryptographyIntegration:
     @pytest.mark.asyncio
     async def test_crypto_manager_quantum_methods(self):
         """Test that CryptoManager has quantum methods"""
-        from src.pydance.security.cryptography import CryptoManager
+        from pydance.security.cryptography import CryptoManager
 
         crypto_manager = CryptoManager()
 
@@ -274,7 +274,7 @@ class TestQuantumCryptographyIntegration:
     @pytest.mark.asyncio
     async def test_crypto_manager_quantum_operations(self):
         """Test quantum operations through CryptoManager"""
-        from src.pydance.security.cryptography import CryptoManager
+        from pydance.security.cryptography import CryptoManager
 
         crypto_manager = CryptoManager()
 
@@ -302,7 +302,7 @@ class TestQuantumKeyManagementIntegration:
     @pytest.mark.asyncio
     async def test_key_manager_quantum_methods(self):
         """Test that KeyManager has quantum methods"""
-        from src.pydance.security.key_management import KeyManager, HSMConfig
+        from pydance.security.key_management import KeyManager, HSMConfig
 
         config = HSMConfig(hsm_type="software")
         key_manager = KeyManager(config)
@@ -318,7 +318,7 @@ class TestQuantumKeyManagementIntegration:
     @pytest.mark.asyncio
     async def test_quantum_key_creation(self):
         """Test quantum key creation through KeyManager"""
-        from src.pydance.security.key_management import KeyManager, HSMConfig
+        from pydance.security.key_management import KeyManager, HSMConfig
 
         config = HSMConfig(hsm_type="software")
         key_manager = KeyManager(config)

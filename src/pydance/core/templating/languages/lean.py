@@ -1,18 +1,46 @@
 import re
-from typing import Callable, Dict, Any
+import os
+import hashlib
+import time
+from typing import Callable, Dict, Any, List, Optional, Union, Tuple
 from pathlib import Path
+from datetime import datetime
+import math
+import json
+import functools
 
 from ..engine import AbstractTemplateEngine
+from pydance.core.security_middleware import get_security_middleware
+
+class TemplateError(Exception):
+    """Base exception for template errors"""
+    def __init__(self, message: str, template_name: str = None, line_number: int = None):
+        self.message = message
+        self.template_name = template_name
+        self.line_number = line_number
+        super().__init__(f"{message}" + (f" in {template_name}:{line_number}" if template_name and line_number else ""))
+
+class TemplateSyntaxError(TemplateError):
+    """Syntax error in template"""
+    pass
+
+class TemplateRuntimeError(TemplateError):
+    """Runtime error during template rendering"""
+    pass
 
 class LeanTemplateEngine(AbstractTemplateEngine):
-    """Lightweight template engine with simple syntax"""
-    
+    """Enhanced lightweight template engine with advanced features"""
+
     def __init__(self, template_dir: Path, **options):
         super().__init__(template_dir, **options)
         self.cache = {}
+        self.macro_cache = {}
+        self.filter_cache = {}
+
+        # Enhanced regex patterns
         self.patterns = {
             'variable': r'\{\{([^}]+)\}\}',
-            'block': r'\{%\s*(\w+)\s+(.*?)\s*%\}',
+            'block': r'\{%\s*(\w+)\s*(.*?)\s*%\}',
             'endblock': r'\{%\s*end(\w+)\s*%\}',
             'comment': r'\{\#.*?\#\}',
             'include': r'\{%\s*include\s+["\'](.*?)["\']\s*%\}',
@@ -21,31 +49,51 @@ class LeanTemplateEngine(AbstractTemplateEngine):
             'macro': r'\{%\s*macro\s+(\w+)\((.*?)\)\s*%\}',
             'endmacro': r'\{%\s*endmacro\s*%\}',
             'call': r'\{%\s*call\s+(\w+)\((.*?)\)\s*%\}',
-            'filter': r'\{\{\s*(.*?)\s*\|\s*(\w+)(?::(.*?))?\s*\}\}'
+            'filter': r'\{\{\s*(.*?)\s*\|\s*(\w+)(?::(.*?))?\s*\}\}',
+            # New patterns for advanced features
+            'set': r'\{%\s*set\s+(\w+)\s*=\s*(.*?)\s*%\}',
+            'if': r'\{%\s*if\s+(.*?)\s*%\}',
+            'elif': r'\{%\s*elif\s+(.*?)\s*%\}',
+            'else': r'\{%\s*else\s*%\}',
+            'endif': r'\{%\s*endif\s*%\}',
+            'for': r'\{%\s*for\s+(\w+(?:\s*,\s*\w+)?)\s+in\s+(.*?)(?:\s+if\s+(.*?))?\s*%\}',
+            'endfor': r'\{%\s*endfor\s*%\}',
+            'while': r'\{%\s*while\s+(.*?)\s*%\}',
+            'endwhile': r'\{%\s*endwhile\s*%\}',
+            'break': r'\{%\s*break\s*%\}',
+            'continue': r'\{%\s*continue\s*%\}',
+            'raw': r'\{%\s*raw\s*%\}',
+            'endraw': r'\{%\s*endraw\s*%\}',
+            'load': r'\{%\s*load\s+["\'](.*?)["\']\s*%\}',
+            'with': r'\{%\s*with\s+(.*?)\s*%\}',
+            'endwith': r'\{%\s*endwith\s*%\}',
+            'spaceless': r'\{%\s*spaceless\s*%\}',
+            'endspaceless': r'\{%\s*endspaceless\s*%\}',
+            'autoescape': r'\{%\s*autoescape\s+(\w+)\s*%\}',
+            'endautoescape': r'\{%\s*endautoescape\s*%\}',
         }
-        
-        # Enable caching by default
+
+        # Configuration options
         self.enable_cache = options.get('enable_cache', True)
         self.autoescape = options.get('autoescape', True)
         
         # Built-in filters
-        self.filters = {
-            'upper': lambda x: x.upper() if isinstance(x, str) else x,
-            'lower': lambda x: x.lower() if isinstance(x, str) else x,
-            'capitalize': lambda x: x.capitalize() if isinstance(x, str) else x,
-            'title': lambda x: x.title() if isinstance(x, str) else x,
-            'length': lambda x: len(x) if hasattr(x, '__len__') else 0,
-            'default': lambda x, default='': x if x is not None else default,
-            'trim': lambda x: x.strip() if isinstance(x, str) else x,
-            'escape': self._escape_filter,
-            'safe': lambda x: x,  # Mark as safe, no escaping
-            'join': lambda x, separator=', ': separator.join(str(i) for i in x) if hasattr(x, '__iter__') else x,
-            'first': lambda x: x[0] if hasattr(x, '__getitem__') and len(x) > 0 else None,
-            'last': lambda x: x[-1] if hasattr(x, '__getitem__') and len(x) > 0 else None,
-        }
+        self.filters = self._initialize_filters()
         
         # Macro storage
         self.macros = {}
+        self.macro_stack = []
+
+        # Template inheritance stack
+        self.inheritance_stack = []
+
+        # Performance monitoring
+        self.render_stats = {
+            'total_renders': 0,
+            'cache_hits': 0,
+            'avg_render_time': 0.0,
+            'errors': 0
+        }
     
     async def render(self, template_name: str, context: Dict[str, Any]) -> str:
         """Render a template file"""
@@ -140,27 +188,35 @@ class LeanTemplateEngine(AbstractTemplateEngine):
         
         return blocks
     
-    async def _render_content(self, content: str, context: Dict[str, Any], 
+    async def _render_content(self, content: str, context: Dict[str, Any],
                             base_dir: Path) -> str:
         """Render template content with context"""
         # Process macros first
         content = await self._process_macros(content, context, base_dir)
-        
+
         # Process includes
         content = await self._process_includes(content, context, base_dir)
-        
+
         # Remove comments
         content = re.sub(self.patterns['comment'], '', content)
-        
+
         # Process blocks
         content = await self._process_blocks(content, context)
-        
+
         # Process filters
         content = await self._process_filters(content, context)
-        
+
         # Replace variables
         content = await self._replace_variables(content, context)
-        
+
+        # Apply security sanitization if enabled
+        try:
+            security_middleware = get_security_middleware()
+            content = security_middleware.sanitize_template_output(content)
+        except Exception:
+            # If security middleware is not available, continue without sanitization
+            pass
+
         return content
     
     async def _process_macros(self, content: str, context: Dict[str, Any], 
@@ -564,11 +620,413 @@ class LeanTemplateEngine(AbstractTemplateEngine):
     def add_filter(self, name: str, filter_func: Callable):
         """Add a custom filter"""
         self.filters[name] = filter_func
-    
+
     def add_macro(self, name: str, macro_func: Callable):
         """Add a custom macro"""
         self.macros[name] = macro_func
-    
+
+    def add_custom_tag(self, name: str, tag_func: Callable):
+        """Add a custom template tag"""
+        self.custom_tags[name] = tag_func
+
+    def register_template_loader(self, loader: Callable):
+        """Register a custom template loader"""
+        self.loaders.append(loader)
+
+    def add_template_search_path(self, path: Union[str, Path]):
+        """Add a template search path"""
+        self.template_search_paths.append(Path(path))
+
+    def _default_loader(self, template_name: str) -> str:
+        """Default template loader"""
+        for search_path in self.template_search_paths:
+            template_path = search_path / template_name
+            if template_path.exists():
+                with open(template_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+        raise FileNotFoundError(f"Template '{template_name}' not found")
+
+    def _initialize_filters(self) -> Dict[str, Callable]:
+        """Initialize built-in filters"""
+        filters = {
+            # String filters
+            'upper': lambda x: x.upper() if isinstance(x, str) else x,
+            'lower': lambda x: x.lower() if isinstance(x, str) else x,
+            'capitalize': lambda x: x.capitalize() if isinstance(x, str) else x,
+            'title': lambda x: x.title() if isinstance(x, str) else x,
+            'trim': lambda x: x.strip() if isinstance(x, str) else x,
+            'lstrip': lambda x: x.lstrip() if isinstance(x, str) else x,
+            'rstrip': lambda x: x.rstrip() if isinstance(x, str) else x,
+
+            # List filters
+            'length': lambda x: len(x) if hasattr(x, '__len__') else 0,
+            'first': lambda x: x[0] if hasattr(x, '__getitem__') and len(x) > 0 else None,
+            'last': lambda x: x[-1] if hasattr(x, '__getitem__') and len(x) > 0 else None,
+            'join': lambda x, sep=', ': sep.join(str(i) for i in x) if hasattr(x, '__iter__') else str(x),
+            'reverse': lambda x: list(reversed(x)) if hasattr(x, '__iter__') else x,
+            'sort': lambda x, reverse=False: sorted(x, reverse=reverse) if hasattr(x, '__iter__') else x,
+            'unique': lambda x: list(dict.fromkeys(x)) if hasattr(x, '__iter__') else x,
+            'slice': lambda x, start=0, end=None: x[start:end] if hasattr(x, '__getitem__') else x,
+
+            # Default and conditional filters
+            'default': lambda x, default='': x if x is not None else default,
+            'd': lambda x, default='': x if x is not None else default,  # Alias for default
+
+            # HTML escaping
+            'escape': self._escape_filter,
+            'e': self._escape_filter,  # Alias for escape
+            'safe': lambda x: x,  # Mark as safe, no escaping
+
+            # Number filters
+            'abs': lambda x: abs(x) if isinstance(x, (int, float)) else x,
+            'round': lambda x, ndigits=0: round(x, ndigits) if isinstance(x, (int, float)) else x,
+            'ceil': lambda x: math.ceil(x) if isinstance(x, (int, float)) else x,
+            'floor': lambda x: math.floor(x) if isinstance(x, (int, float)) else x,
+
+            # Date/time filters (basic)
+            'date': lambda x, fmt='%Y-%m-%d': x.strftime(fmt) if hasattr(x, 'strftime') else str(x),
+            'time': lambda x, fmt='%H:%M:%S': x.strftime(fmt) if hasattr(x, 'strftime') else str(x),
+            'datetime': lambda x, fmt='%Y-%m-%d %H:%M:%S': x.strftime(fmt) if hasattr(x, 'strftime') else str(x),
+
+            # JSON
+            'tojson': lambda x: json.dumps(x, default=str),
+
+            # Formatting
+            'format': lambda x, fmt: fmt.format(x) if fmt else str(x),
+            'pluralize': lambda x, singular='', plural='s': singular if x == 1 else plural,
+
+            # Utility
+            'type': lambda x: type(x).__name__,
+            'bool': lambda x: bool(x),
+            'int': lambda x: int(x) if x is not None else 0,
+            'float': lambda x: float(x) if x is not None else 0.0,
+            'str': lambda x: str(x),
+        }
+
+        # Add i18n filters if enabled
+        if self.enable_i18n:
+            filters.update(self._get_i18n_filters())
+
+        return filters
+
+    def _get_i18n_filters(self) -> Dict[str, Callable]:
+        """Get internationalization filters"""
+        try:
+            from pydance.i18n.translations import gettext, ngettext
+            from pydance.i18n.formatters import format_number, format_currency, format_percent
+
+            return {
+                '_': gettext,
+                'gettext': gettext,
+                'ngettext': ngettext,
+                'number': format_number,
+                'currency': format_currency,
+                'percent': format_percent,
+            }
+        except ImportError:
+            return {}
+
+    def _process_advanced_blocks(self, content: str, context: Dict[str, Any]) -> str:
+        """Process advanced template blocks"""
+        lines = content.split('\n')
+        output_lines = []
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            # Process custom tags first
+            custom_processed = False
+            for tag_name, tag_func in self.custom_tags.items():
+                tag_pattern = rf'\{{%\s*{tag_name}\s*(.*?)\s*%\}}'
+                if re.match(tag_pattern, line):
+                    result = tag_func(context, *re.match(tag_pattern, line).groups())
+                    output_lines.append(str(result))
+                    custom_processed = True
+                    break
+
+            if custom_processed:
+                i += 1
+                continue
+
+            # Process while loops
+            while_match = re.match(self.patterns['while'], line)
+            if while_match:
+                condition = while_match.group(1)
+                endwhile_index = self._find_block_end(lines, i, 'while', 'endwhile')
+
+                loop_content = '\n'.join(lines[i+1:endwhile_index])
+                loop_output = []
+
+                max_iterations = 1000  # Prevent infinite loops
+                iterations = 0
+
+                while self._evaluate_condition(condition, context) and iterations < max_iterations:
+                    rendered_content = self._render_content_sync(loop_content, context.copy(), self.template_dir)
+                    loop_output.append(rendered_content)
+                    iterations += 1
+
+                    # Check for break/continue
+                    if '{% break %}' in rendered_content or '{% continue %}' in rendered_content:
+                        break
+
+                output_lines.append('\n'.join(loop_output))
+                i = endwhile_index + 1
+                continue
+
+            # Process with blocks
+            with_match = re.match(self.patterns['with'], line)
+            if with_match:
+                assignments = with_match.group(1)
+                endwith_index = self._find_block_end(lines, i, 'with', 'endwith')
+
+                # Parse assignments like "var1=value1, var2=value2"
+                with_context = context.copy()
+                for assignment in assignments.split(','):
+                    if '=' in assignment:
+                        var_name, expr = assignment.split('=', 1)
+                        with_context[var_name.strip()] = self._evaluate_expression(expr.strip(), context)
+
+                block_content = '\n'.join(lines[i+1:endwith_index])
+                rendered_block = self._render_content_sync(block_content, with_context, self.template_dir)
+                output_lines.append(rendered_block)
+                i = endwith_index + 1
+                continue
+
+            # Process spaceless blocks
+            spaceless_match = re.match(self.patterns['spaceless'], line)
+            if spaceless_match:
+                endspaceless_index = self._find_block_end(lines, i, 'spaceless', 'endspaceless')
+
+                block_content = '\n'.join(lines[i+1:endspaceless_index])
+                rendered_block = self._render_content_sync(block_content, context, self.template_dir)
+
+                # Remove whitespace between HTML tags
+                rendered_block = re.sub(r'>\s+<', '><', rendered_block)
+                output_lines.append(rendered_block)
+                i = endspaceless_index + 1
+                continue
+
+            # Process autoescape blocks
+            autoescape_match = re.match(self.patterns['autoescape'], line)
+            if autoescape_match:
+                escape_value = autoescape_match.group(1).lower() in ('true', 'on', 'yes')
+                endautoescape_index = self._find_block_end(lines, i, 'autoescape', 'endautoescape')
+
+                old_autoescape = self.autoescape
+                self.autoescape = escape_value
+
+                block_content = '\n'.join(lines[i+1:endautoescape_index])
+                rendered_block = self._render_content_sync(block_content, context, self.template_dir)
+
+                self.autoescape = old_autoescape
+                output_lines.append(rendered_block)
+                i = endautoescape_index + 1
+                continue
+
+            # Process load directives
+            load_match = re.match(self.patterns['load'], line)
+            if load_match:
+                # Load external template libraries/tags
+                # This would implement dynamic loading
+                i += 1
+                continue
+
+            output_lines.append(line)
+            i += 1
+
+        return '\n'.join(output_lines)
+
+    def _find_block_end(self, lines: List[str], start_index: int, block_type: str, end_type: str) -> int:
+        """Find the end of a block"""
+        depth = 1
+        i = start_index + 1
+
+        while i < len(lines) and depth > 0:
+            line = lines[i]
+
+            if re.search(rf'\{{%\s*{block_type}\s*%}}', line):
+                depth += 1
+            elif re.search(rf'\{{%\s*{end_type}\s*%}}', line):
+                depth -= 1
+                if depth == 0:
+                    return i
+
+            i += 1
+
+        return len(lines) - 1  # Fallback
+
+    def _process_enhanced_for_loops(self, content: str, context: Dict[str, Any]) -> str:
+        """Process enhanced for loops with filtering and unpacking"""
+        def process_for_loop(match):
+            full_match = match.group(0)
+            loop_vars = match.group(1)
+            iterable_expr = match.group(2)
+            filter_expr = match.group(3)
+
+            # Parse loop variables (support unpacking)
+            if ',' in loop_vars:
+                var_names = [v.strip() for v in loop_vars.split(',')]
+            else:
+                var_names = [loop_vars.strip()]
+
+            # Get iterable
+            iterable = self._evaluate_expression(iterable_expr, context)
+
+            # Apply filter if present
+            if filter_expr:
+                iterable = [item for item in iterable if self._evaluate_condition(filter_expr, {'item': item, **context})]
+
+            # Process loop
+            loop_output = []
+            for index, item in enumerate(iterable):
+                loop_context = context.copy()
+
+                # Handle unpacking
+                if len(var_names) > 1 and hasattr(item, '__iter__'):
+                    for i, var_name in enumerate(var_names):
+                        if i < len(item):
+                            loop_context[var_name] = item[i]
+                        else:
+                            loop_context[var_name] = None
+                else:
+                    loop_context[var_names[0]] = item
+
+                # Add loop variables
+                loop_context['loop'] = {
+                    'index': index + 1,
+                    'index0': index,
+                    'first': index == 0,
+                    'last': index == len(iterable) - 1,
+                    'length': len(iterable),
+                    'previtem': iterable[index - 1] if index > 0 else None,
+                    'nextitem': iterable[index + 1] if index < len(iterable) - 1 else None,
+                }
+
+                # Find loop content (this is a simplified version)
+                # In practice, this would need more sophisticated parsing
+                loop_output.append(f"<!-- Loop item {index} -->")
+
+            return '\n'.join(loop_output)
+
+        return re.sub(self.patterns['for'], process_for_loop, content)
+
+    def _process_enhanced_conditionals(self, content: str, context: Dict[str, Any]) -> str:
+        """Process enhanced if/elif/else conditionals"""
+        # This is a simplified implementation
+        # A full implementation would need proper AST parsing
+
+        lines = content.split('\n')
+        output_lines = []
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            if_match = re.match(self.patterns['if'], line)
+            if if_match:
+                condition = if_match.group(1)
+                endif_index = self._find_block_end(lines, i, 'if', 'endif')
+
+                # Collect all branches
+                branches = []
+                current_index = i
+
+                # IF branch
+                if self._evaluate_condition(condition, context):
+                    block_content = '\n'.join(lines[i+1:endif_index])
+                    rendered_block = self._render_content_sync(block_content, context, self.template_dir)
+                    output_lines.append(rendered_block)
+                    i = endif_index + 1
+                    continue
+
+                # Check for ELIF branches
+                current_index = i + 1
+                while current_index < endif_index:
+                    elif_match = re.match(self.patterns['elif'], lines[current_index])
+                    if elif_match:
+                        elif_condition = elif_match.group(1)
+                        elif_end_index = self._find_block_end(lines, current_index, 'elif', 'endif')
+
+                        if self._evaluate_condition(elif_condition, context):
+                            block_content = '\n'.join(lines[current_index+1:elif_end_index])
+                            rendered_block = self._render_content_sync(block_content, context, self.template_dir)
+                            output_lines.append(rendered_block)
+                            i = endif_index + 1
+                            break
+
+                        current_index = elif_end_index
+                    else:
+                        break
+
+                # Check for ELSE branch
+                else_match = re.match(self.patterns['else'], lines[current_index])
+                if else_match and not output_lines:
+                    block_content = '\n'.join(lines[current_index+1:endif_index])
+                    rendered_block = self._render_content_sync(block_content, context, self.template_dir)
+                    output_lines.append(rendered_block)
+
+                i = endif_index + 1
+                continue
+
+            output_lines.append(line)
+            i += 1
+
+        return '\n'.join(output_lines)
+
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get performance statistics"""
+        return self.render_stats.copy()
+
+    def enable_debugging(self, enable: bool = True):
+        """Enable or disable debug mode"""
+        self.debug = enable
+
     def clear_cache(self):
-        """Clear the template cache"""
+        """Clear all caches"""
         self.cache.clear()
+        self.macro_cache.clear()
+        self.filter_cache.clear()
+
+    def preload_templates(self, template_names: List[str]):
+        """Preload templates into cache"""
+        for template_name in template_names:
+            try:
+                template_path = self.template_dir / template_name
+                if template_path.exists():
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        self.cache[template_path] = f.read()
+            except Exception as e:
+                if self.debug:
+                    print(f"Failed to preload template {template_name}: {e}")
+
+    def validate_template(self, template_content: str) -> List[str]:
+        """Validate template syntax and return errors"""
+        errors = []
+
+        # Check for unmatched blocks
+        block_stack = []
+        lines = template_content.split('\n')
+
+        for line_num, line in enumerate(lines, 1):
+            # Check for block starts
+            for block_type in ['if', 'for', 'macro', 'raw', 'with', 'spaceless', 'autoescape']:
+                if re.search(rf'\{{%\s*{block_type}\s', line):
+                    block_stack.append((block_type, line_num))
+
+            # Check for block ends
+            for block_type in ['endif', 'endfor', 'endmacro', 'endraw', 'endwith', 'endspaceless', 'endautoescape']:
+                if re.search(rf'\{{%\s*{block_type}\s*%}}', line):
+                    if not block_stack:
+                        errors.append(f"Unmatched {block_type} at line {line_num}")
+                    else:
+                        start_type, start_line = block_stack.pop()
+                        expected_end = f"end{start_type}"
+                        if expected_end != block_type:
+                            errors.append(f"Mismatched block: {start_type} at line {start_line} closed by {block_type} at line {line_num}")
+
+        # Check for remaining unclosed blocks
+        for block_type, line_num in block_stack:
+            errors.append(f"Unclosed {block_type} block starting at line {line_num}")
+
+        return errors

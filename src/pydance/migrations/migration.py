@@ -14,13 +14,14 @@ class Migration:
     """
 
     def __init__(self, model_class: Type[BaseModel], from_version: int, to_version: int,
-                 operations: Dict[str, List], schema_definition: Dict):
+                 operations: Dict[str, List], schema_definition: Dict, migration_id: Optional[str] = None):
         self.model_class = model_class
         self.model_name = model_class.__name__
         self.from_version = from_version
         self.to_version = to_version
         self.operations = operations
         self.schema_definition = schema_definition
+        self.migration_id = migration_id or self._generate_migration_id()
         self.created_at = datetime.now()
 
     @property
@@ -87,9 +88,15 @@ class Migration:
         migration.created_at = datetime.fromisoformat(data['created_at'])
         return migration
 
+    def _generate_migration_id(self) -> str:
+        """Generate a unique migration ID"""
+        timestamp = self.created_at.strftime("%Y%m%d_%H%M%S")
+        direction = "upgrade" if self.is_upgrade() else "downgrade" if self.is_downgrade() else "initial"
+        return f"{timestamp}_{self.model_name.lower()}_{direction}_v{self.from_version}_to_v{self.to_version}"
+
     def __repr__(self) -> str:
         direction = "UPGRADE" if self.is_upgrade() else "DOWNGRADE" if self.is_downgrade() else "INITIAL"
-        return f"<Migration {self.model_name}: v{self.from_version} -> v{self.to_version} ({direction})>"
+        return f"<Migration {self.migration_id}: {self.model_name} v{self.from_version} -> v{self.to_version} ({direction})>"
 
     # Schema serialization/deserialization methods (moved from MigrationManager)
     @staticmethod

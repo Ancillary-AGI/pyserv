@@ -11,7 +11,7 @@ from motor.core import AgnosticCollection
 from bson import ObjectId
 from pymongo import ASCENDING
 
-from ..database.database import DatabaseConnection
+from ..core.database_pool import OptimizedDatabaseConnection
 from ..database.config import DatabaseConfig
 from ..utils.types import Field, Relationship
 from .query import QueryBuilder
@@ -158,12 +158,12 @@ class BaseModel(metaclass=ModelMeta):
     @classmethod
     async def create_table(cls):
         """Create database table for this model"""
-        db = DatabaseConnection.get_instance(cls._db_config)
+        db = OptimizedDatabaseConnection.get_instance(cls._db_config)
         await db.create_table(cls)
 
     async def save(self):
         """Save the instance to the database using backend abstraction"""
-        db = DatabaseConnection.get_instance(self._db_config)
+        db = OptimizedDatabaseConnection.get_instance(self._db_config)
 
         # Convert instance to dict for backend
         data = self.to_dict()
@@ -206,7 +206,7 @@ class BaseModel(metaclass=ModelMeta):
         if not primary_key or not hasattr(self, primary_key):
             raise ValueError("Cannot delete object without primary key")
 
-        db = DatabaseConnection.get_instance(self._db_config)
+        db = OptimizedDatabaseConnection.get_instance(self._db_config)
 
         # Use backend delete method
         filters = {primary_key: getattr(self, primary_key)}

@@ -342,7 +342,7 @@ class CSRFToken:
         signature = hmac.new(
             self.secret_key.encode(),
             message.encode(),
-            hashlib.sha256
+            hashlib.sha3_256
         ).hexdigest()
 
         return f"{message}:{signature}"
@@ -371,7 +371,7 @@ class CSRFToken:
             expected_signature = hmac.new(
                 self.secret_key.encode(),
                 message.encode(),
-                hashlib.sha256
+                hashlib.sha3_256
             ).hexdigest()
 
             return hmac.compare_digest(signature, expected_signature)

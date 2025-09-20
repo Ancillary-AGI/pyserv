@@ -10,12 +10,12 @@ from functools import wraps
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
-from ..core.response import Response
-from ..core.request import Request
-from ..core.exceptions import HTTPException, ValidationError, PermissionDenied, NotFound, APIException
-from ..core.pagination import Pagination, PageNumberPagination, LimitOffsetPagination
-from ..models.base import BaseModel
-from ..core.auth import login_required, permission_required
+from pydance.core.response import Response
+from pydance.core.request import Request
+from pydance.core.exceptions import HTTPException, ValidationError, PermissionDenied, NotFound, APIException
+from pydance.core.pagination import Pagination, PageNumberPagination, LimitOffsetPagination
+from pydance.models.base import BaseModel
+from pydance.core.auth import login_required, permission_required
 
 
 class Serializer:

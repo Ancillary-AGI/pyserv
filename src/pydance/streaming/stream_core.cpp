@@ -1,6 +1,6 @@
 /**
  * PyDance Ultra-Low Latency Streaming Core
- * C++ implementation with advanced algorithms
+ * Optimized C++ implementation with cross-platform support
  */
 
 #include <iostream>
@@ -17,13 +17,33 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdint>
+#include <string>
+#include <mutex>
+#include <condition_variable>
+#include <csignal>
+
+// Cross-platform networking
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#define close closesocket
+#define socklen_t int
+#else
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <arpa/inet.h>
+#endif
+
+// Optional SSL support
+#ifdef USE_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#endif
 
 // Novel Data Structures
 template<typename T>
@@ -608,6 +628,16 @@ private:
         // Initialize network components
         std::cout << "Initializing network components..." << std::endl;
 
+#ifdef _WIN32
+        // Initialize Winsock
+        WSADATA wsaData;
+        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+            std::cerr << "Failed to initialize Winsock" << std::endl;
+            return;
+        }
+#endif
+
+#ifdef USE_OPENSSL
         // Initialize SSL context for secure connections
         SSL_library_init();
         SSL_load_error_strings();
@@ -623,6 +653,7 @@ private:
         // Load certificates (would be configurable in production)
         // SSL_CTX_use_certificate_file(ssl_ctx_, "server.crt", SSL_FILETYPE_PEM);
         // SSL_CTX_use_PrivateKey_file(ssl_ctx_, "server.key", SSL_FILETYPE_PEM);
+#endif
     }
 
     void start_io_workers() {
@@ -722,13 +753,28 @@ private:
         sockaddr_in client_addr{};
         socklen_t addr_len = sizeof(client_addr);
 
-        int client_fd = accept4(server_fd_, (sockaddr*)&client_addr, &addr_len, SOCK_NONBLOCK);
+        int client_fd = accept(server_fd_, (sockaddr*)&client_addr, &addr_len);
         if (client_fd == -1) {
+#ifdef _WIN32
+            if (WSAGetLastError() != WSAEWOULDBLOCK) {
+                std::cerr << "Failed to accept connection" << std::endl;
+            }
+#else
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 std::cerr << "Failed to accept connection" << std::endl;
             }
+#endif
             return;
         }
+
+        // Set client socket to non-blocking mode
+#ifdef _WIN32
+        u_long mode = 1;
+        ioctlsocket(client_fd, FIONBIO, &mode);
+#else
+        int flags = fcntl(client_fd, F_GETFL, 0);
+        fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+#endif
 
         // Generate client ID
         std::string client_id = generate_client_id(client_addr);
@@ -839,6 +885,7 @@ private:
     uint16_t port_{8080};
     SSL_CTX* ssl_ctx_{nullptr};
     std::thread metrics_thread_;
+    std::atomic<bool> running_{true};
 
     uint64_t get_timestamp() {
         return std::chrono::duration_cast<std::chrono::microseconds>(

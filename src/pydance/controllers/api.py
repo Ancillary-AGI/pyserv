@@ -8,8 +8,8 @@ from abc import ABC, abstractmethod
 import json
 
 from .base import Controller, ControllerResponse, get, post, put, delete, patch
-from ..core.request import Request
-from ..core.response import Response
+from ..core.http.request import Request
+from ..core.http.response import Response
 from ..core.exceptions import HTTPException, BadRequest, NotFound, RateLimitExceeded
 from ..core.rate_limiting import RateLimiter, default_rate_limiter
 from ..core.pagination import PaginationParams, PageNumberPaginator, paginate

@@ -9,10 +9,10 @@ from typing import Optional, Dict, Any, List, Union, Type
 from datetime import datetime, timedelta
 from abc import ABC, abstractmethod
 
-from ...core.request import Request
-from ...core.response import Response
-from ...core.exceptions import HTTPException, Unauthorized, Forbidden
-from ...models.user import BaseUser
+from pydance.core.http.request import Request
+from pydance.core.http.response import Response
+from pydance.core.exceptions import HTTPException, Unauthorized, Forbidden
+from pydance.models.user import BaseUser
 from .backends import SessionBackend, TokenBackend
 
 

@@ -18,7 +18,7 @@ async def client(app):
 @pytest.fixture
 def mock_request():
     """Mock request object."""
-    from pydance.core.request import Request
+    from pydance.core.http.request import Request
 
     class MockRequest:
         def __init__(self, method="GET", path="/", headers=None, query_params=None):
@@ -35,7 +35,7 @@ def mock_request():
 @pytest.fixture
 def mock_response():
     """Mock response object."""
-    from pydance.core.response import Response
+    from pydance.core.http.response import Response
 
     class MockResponse:
         def __init__(self, content="", status_code=200, headers=None):

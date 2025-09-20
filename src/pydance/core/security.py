@@ -62,7 +62,7 @@ class BasicFileValidator(FileValidator):
 
         # Calculate file hash
         file_data.seek(0)
-        file_hash = hashlib.sha256(sample).hexdigest()
+        file_hash = hashlib.sha3_256(sample).hexdigest()
         results['metadata']['sha256'] = file_hash
 
         return results

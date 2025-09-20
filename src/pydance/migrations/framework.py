@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .migration import Migration
 from .migrator import Migrator
-from ..database.database import DatabaseConnection
+from ..core.database import DatabaseConnection
 from ..database.config import DatabaseConfig
 from ..database.backends import get_backend
 from ..models.base import BaseModel
@@ -162,6 +162,7 @@ class MigrationFramework:
                             results['migrations_applied'] += 1
                             results['migrations'].append({
                                 'model': model_name,
+                                'migration_id': migration.migration_id,
                                 'from_version': current_version,
                                 'to_version': target_version,
                                 'operations': len(migration.operations)
@@ -172,6 +173,7 @@ class MigrationFramework:
                         print(f"  [DRY RUN] Would apply migration: {migration}")
                         results['migrations'].append({
                             'model': model_name,
+                            'migration_id': migration.migration_id,
                             'from_version': current_version,
                             'to_version': target_version,
                             'operations': len(migration.operations),

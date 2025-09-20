@@ -5,7 +5,7 @@
 ![C/C++](https://img.shields.io/badge/C%2FC%2B%2B-Extensions-orange?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-red?style=flat-square)
 
-**PyDance** is a high-performance, enterprise-grade web framework built from scratch with C/C++ extensions for maximum performance. It combines the ease of Python development with the speed of native C/C++ code, featuring comprehensive security, monitoring, and scalability features.
+**PyDance** is a compact, high-performance web framework with C/C++ acceleration, advanced security, and modern architecture. Features GPU-accelerated template rendering, comprehensive security measures, and enterprise-grade monitoring.
 
 ## 🚀 Key Features
 
@@ -306,6 +306,68 @@ auth_result = await zero_trust.authorize_request(
 )
 ```
 
+### Quantum Security (Advanced)
+```python
+from pydance.security.quantum_security import (
+    generate_quantum_keypair,
+    establish_secure_channel,
+    quantum_authenticate
+)
+
+# Generate quantum-resistant keypair
+keys = await generate_quantum_keypair("kyber")
+print(f"Generated {keys['algorithm']} keypair")
+
+# Establish quantum-secure channel
+channel = await establish_secure_channel()
+print(f"Channel established: {channel['channel_id']}")
+
+# Perform quantum authentication
+auth = await quantum_authenticate("user123")
+print(f"Authenticated: {auth['identity']}")
+```
+
+### Distributed Consensus
+```python
+from pydance.microservices import RaftConsensus, DistributedLock
+
+# Initialize consensus
+consensus = RaftConsensus("node1", ["node2", "node3"])
+await consensus.start()
+
+# Use distributed lock
+lock = DistributedLock(consensus, "resource_lock")
+if await lock.acquire("node1"):
+    try:
+        # Critical section
+        pass
+    finally:
+        await lock.release("node1")
+```
+
+### Event Sourcing & CQRS
+```python
+from pydance.microservices import Event, EventStore, Aggregate, Repository
+
+class UserAggregate(Aggregate):
+    async def handle_command(self, command):
+        if command['type'] == 'create_user':
+            event = Event(
+                event_type='user_created',
+                aggregate_id=self.aggregate_id,
+                payload=command
+            )
+            return [event]
+
+# Usage
+event_store = EventStore()
+repository = Repository(event_store, UserAggregate)
+
+user = UserAggregate("user_123")
+events = await user.handle_command({'type': 'create_user', 'name': 'John'})
+await event_store.append_events(events)
+```
+
 ## 📊 Monitoring & Metrics
 
 ### Real-time Metrics
@@ -388,6 +450,69 @@ class QueryType(Query):
         return await Article.find(id)
 
 schema = Schema(query=QueryType())
+```
+
+## 🎨 Template Engine
+
+### Lean Template Engine
+PyDance includes a high-performance template engine with C++ acceleration and GPU support:
+
+```python
+from pydance.templating import TemplateEngine
+
+# Create engine with C++ acceleration
+engine = TemplateEngine(template_dirs=['templates'])
+
+# Render template
+template = """
+<html>
+<body>
+    <h1>{{ title | upper }}</h1>
+    {% for item in items %}
+        <li>{{ item.name }}: {{ item.value | default('N/A') }}</li>
+    {% endfor %}
+</body>
+</html>
+"""
+
+context = {
+    'title': 'My Page',
+    'items': [{'name': 'Item 1', 'value': 'Value 1'}]
+}
+
+result = await engine.render_string(template, context)
+```
+
+### Advanced Features
+- **Template Inheritance**: `{% extends %}`, `{% block %}`
+- **Macros**: `{% macro %}`, `{% call %}`
+- **Custom Filters**: Extensible filter system
+- **GPU Acceleration**: Batch processing with CUDA/OpenCL
+- **Security**: XSS prevention, injection protection
+
+### Template Syntax
+```jinja
+<!-- Variables -->
+{{ variable }}
+{{ object.attribute }}
+{{ list[0] }}
+
+<!-- Filters -->
+{{ value | filter }}
+{{ value | upper | trim }}
+
+<!-- Control Structures -->
+{% if condition %}Content{% endif %}
+{% for item in items %}{{ item }}{% endfor %}
+
+<!-- Template Inheritance -->
+{% extends "base.html" %}
+{% block content %}Custom content{% endblock %}
+
+<!-- Macros -->
+{% macro input(name) %}
+<input name="{{ name }}">
+{% endmacro %}
 ```
 
 ## 🗄️ Database Integration

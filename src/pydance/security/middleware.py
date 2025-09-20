@@ -10,12 +10,12 @@ import hmac
 import hashlib
 import time
 
-from ..core.middleware import HTTPMiddleware, WebSocketMiddleware
-from ..core.http.request import Request
-from ..core.http.response import Response
-from ..core.websocket.websocket import WebSocket
-from ..core.exceptions import HTTPException, Forbidden, TooManyRequests
-from ....contrib.auth import Auth
+from pydance.core.middleware import HTTPMiddleware, WebSocketMiddleware
+from pydance.core.http.request import Request
+from pydance.core.http.response import Response
+from pydance.core.websocket.websocket import WebSocket
+from pydance.core.exceptions import HTTPException, Forbidden, TooManyRequests
+from contrib.auth import Auth
 
 class SecurityMiddleware(HTTPMiddleware):
     """Security middleware for common web vulnerabilities"""

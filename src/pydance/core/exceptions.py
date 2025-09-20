@@ -122,6 +122,12 @@ class NotAcceptable(HTTPException):
         super().__init__(message, status_code=406, error_code="not_acceptable", **kwargs)
 
 
+class UnsupportedMediaType(HTTPException):
+    """415 Unsupported Media Type"""
+    def __init__(self, message: str = "Unsupported media type", **kwargs):
+        super().__init__(message, status_code=415, error_code="unsupported_media_type", **kwargs)
+
+
 class Conflict(HTTPException):
     """409 Conflict"""
     def __init__(self, message: str = "Conflict", **kwargs):
@@ -568,6 +574,7 @@ __all__ = [
     'NotFound',
     'MethodNotAllowed',
     'NotAcceptable',
+    'UnsupportedMediaType',
     'Conflict',
     'Gone',
     'UnprocessableEntity',

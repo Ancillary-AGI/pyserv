@@ -229,6 +229,7 @@ class MySQLBackend:
         query = '''
             CREATE TABLE IF NOT EXISTS migrations (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                migration_id VARCHAR(255) UNIQUE,
                 model_name VARCHAR(255) NOT NULL,
                 version INT NOT NULL,
                 schema_definition TEXT NOT NULL,
@@ -239,14 +240,21 @@ class MySQLBackend:
         '''
         await self.execute_query(query)
 
-    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict) -> None:
+    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict, migration_id: str = None) -> None:
         """Insert a migration record for MySQL"""
         import json
-        query = '''
-            INSERT INTO migrations (model_name, version, schema_definition, operations)
-            VALUES (%s, %s, %s, %s)
-        '''
-        params = (model_name, version, json.dumps(schema_definition), json.dumps(operations))
+        if migration_id:
+            query = '''
+                INSERT INTO migrations (migration_id, model_name, version, schema_definition, operations)
+                VALUES (%s, %s, %s, %s, %s)
+            '''
+            params = (migration_id, model_name, version, json.dumps(schema_definition), json.dumps(operations))
+        else:
+            query = '''
+                INSERT INTO migrations (model_name, version, schema_definition, operations)
+                VALUES (%s, %s, %s, %s)
+            '''
+            params = (model_name, version, json.dumps(schema_definition), json.dumps(operations))
         await self.execute_query(query, params)
 
     async def get_applied_migrations(self) -> Dict[str, int]:

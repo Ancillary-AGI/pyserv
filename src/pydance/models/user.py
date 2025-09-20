@@ -119,8 +119,8 @@ class BaseUser(BaseModel):
         if cls._password_hash_algorithm == "bcrypt":
             salt = bcrypt.gensalt(rounds=cls._password_hash_rounds)
             return bcrypt.hashpw(password.encode(), salt).decode()
-        elif cls._password_hash_algorithm == "sha256":
-            return hashlib.sha256(password.encode()).hexdigest()
+        elif cls._password_hash_algorithm == "sha3_256":
+            return hashlib.sha3_256(password.encode()).hexdigest()
         else:
             from ..core.exceptions import ConfigurationError
             raise ConfigurationError(f"Unsupported hash algorithm: {cls._password_hash_algorithm}")
@@ -408,6 +408,24 @@ class BaseUser(BaseModel):
             base_permissions.extend(["create_content", "edit_content"])
             
         return base_permissions
+
+    def ip(self, request=None) -> Optional[str]:
+        """Get user's IP address from request or stored data"""
+        if request:
+            # Try various headers for IP detection
+            ip = (
+                request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
+                request.headers.get('X-Real-IP') or
+                request.headers.get('CF-Connecting-IP') or
+                getattr(request, 'client_ip', None) or
+                getattr(request, 'remote_addr', None)
+            )
+            return ip if ip else None
+
+        # Return stored IP from metadata if available
+        if self.metadata and isinstance(self.metadata, dict):
+            return self.metadata.get('last_ip')
+        return None
 
     def __str__(self):
         return f"{self.full_name} ({self.email})"

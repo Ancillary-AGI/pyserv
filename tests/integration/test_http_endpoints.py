@@ -3,7 +3,7 @@ Integration tests for HTTP endpoints
 """
 import pytest
 
-from src.pydance import Application
+from pydance import Application
 
 
 @pytest.mark.integration

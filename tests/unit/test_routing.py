@@ -3,7 +3,7 @@ Unit tests for Pydance Routing
 """
 import pytest
 
-from src.pydance.core.routing import Router, Route, WebSocketRoute
+from pydance.core.routing import Router, Route, WebSocketRoute
 
 
 class TestRoute:

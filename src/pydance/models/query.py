@@ -13,10 +13,11 @@ from contextlib import asynccontextmanager
 import math
 import inspect
 
-from ..database.database import DatabaseConnection
+from ..core.database_pool import OptimizedDatabaseConnection
 from ..database.config import DatabaseConfig
 from ..database.backends import get_backend
 from ..utils.types import Field, Relationship, RelationshipType, OrderDirection, PaginatedResponse, AggregationResult, LazyLoad
+from ..utils.collections import Collection
 
 T = TypeVar('T')
 M = TypeVar('M', bound=PydanticBaseModel)
@@ -27,7 +28,7 @@ class QueryBuilder(Generic[T]):
 
     def __init__(self, model_class: Type[T]):
         self.model_class = model_class
-        self.db = DatabaseConnection.get_instance(self.model_class._db_config)
+        self.db = OptimizedDatabaseConnection.get_instance(self.model_class._db_config)
         self.backend = self.db.backend
         self.conditions: List[str] = []
         self.params: List[Any] = []
@@ -349,6 +350,15 @@ class QueryBuilder(Generic[T]):
             page_size=page_size,
             total_pages=math.ceil(total / page_size) if page_size > 0 else 0
         )
+
+    async def to_collection(self) -> Collection[T]:
+        """Execute query and return results as Collection"""
+        items = await self.execute()
+        return Collection(items)
+
+    async def as_collection(self) -> Collection[T]:
+        """Alias for to_collection()"""
+        return await self.to_collection()
 
     async def aggregate(self, **aggregations: str) -> AggregationResult:
         """Perform aggregation operations using backend abstraction"""

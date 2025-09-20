@@ -20,15 +20,15 @@ import time
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from src.pydance import Application
-from src.pydance.microservices import (
+from pydance import Application
+from pydance.microservices import (
     Service, ServiceStatus, InMemoryServiceDiscovery,
     RaftConsensus, ConsensusState, DistributedLock,
     Event, EventStore, Aggregate, Repository,
     HttpMethod, Link, APIResponse, APIError, RateLimiter,
     PaginationParams, Paginator, ValidationError
 )
-from src.pydance.monitoring import MonitoringSystem
+from pydance.monitoring import MonitoringSystem
 
 
 class UserAggregate(Aggregate):

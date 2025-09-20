@@ -5,10 +5,10 @@ Authentication decorators for route protection.
 from functools import wraps
 from typing import Optional, List, Callable, Any
 
-from ...core.request import Request
-from ...core.response import Response
-from ...core.exceptions import Unauthorized, Forbidden
-from ...models.user import BaseUser
+from pydance.core.http.request import Request
+from pydance.core.http.response import Response
+from pydance.core.exceptions import Unauthorized, Forbidden
+from pydance.models.user import BaseUser
 
 
 def login_required(auth_instance=None):

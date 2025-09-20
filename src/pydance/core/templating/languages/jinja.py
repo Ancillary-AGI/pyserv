@@ -2,8 +2,8 @@
 import jinja2
 from typing import Dict, Any
 from pathlib import Path
-from ...i18n.translations import gettext, ngettext
-from ...i18n.formatters import format_date, format_time, format_datetime, format_number, format_currency, format_percent, format_scientific
+from pydance.i18n.translations import gettext, ngettext
+from pydance.i18n.formatters import format_date, format_time, format_datetime, format_number, format_currency, format_percent, format_scientific
 from ..engine import AbstractTemplateEngine
 
 class JinjaTemplateEngine(AbstractTemplateEngine):

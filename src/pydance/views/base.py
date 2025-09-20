@@ -7,10 +7,10 @@ from typing import Dict, Any, Optional, Type, List, Union
 from abc import ABC, abstractmethod
 import inspect
 
-from ..core.http.request import Request
-from ..core.http.response import Response
-from ..core.server.application import Application
-from ..core.exceptions import HTTPException, NotFound
+from pydance.core.http.request import Request
+from pydance.core.http.response import Response
+from pydance.core.server.application import Application
+from pydance.core.exceptions import HTTPException, NotFound
 
 
 class View(ABC):
@@ -248,7 +248,7 @@ def render_to(template_name: str):
     """Decorator to render function result to template"""
     def decorator(func):
         async def wrapper(request, *args, **kwargs):
-            from ..core.server.application import Application
+            from pydance.core.server.application import Application
             app = Application()
 
             result = await func(request, *args, **kwargs) if inspect.iscoroutinefunction(func) else func(request, *args, **kwargs)

@@ -36,7 +36,7 @@ class FileProcessor:
             'mime_type': mimetypes.guess_type(filename)[0],
             'extension': Path(filename).suffix.lower(),
             'hash_md5': hashlib.md5(content).hexdigest(),
-            'hash_sha256': hashlib.sha256(content).hexdigest(),
+            'hash_sha3_256': hashlib.sha3_256(content).hexdigest(),
         }
 
     @staticmethod

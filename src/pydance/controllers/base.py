@@ -6,9 +6,9 @@ from typing import Dict, Any, Optional, Callable, Type, Union
 from functools import wraps
 import inspect
 
-from ..core.request import Request
-from ..core.response import Response
-from ..core.server.application import Application
+from .request import Request
+from .response import Response
+from .server.application import Application
 from ..core.exceptions import HTTPException, BadRequest, Unauthorized, Forbidden, NotFound, InternalServerError
 
 

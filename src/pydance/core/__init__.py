@@ -1,54 +1,33 @@
 """
-Core PyDance framework components.
+PyDance Core - Minimal, solid framework core.
 
-This module provides the fundamental building blocks for PyDance applications,
-including server components, HTTP handling, routing, middleware, and utilities.
+This module provides the fundamental building blocks:
+- ASGI application (App)
+- Fast routing (Router)
+- Pluggable middleware (MiddlewareStack)
+- Lightweight DI (Container)
+- Type-safe with Pydantic
 """
 
-# Server components
-from .server import Application, Server, AppConfig
-
-# HTTP components
-from .http import Request, Response
-
-# WebSocket components
-from .websocket import WebSocket
-
-# Core utilities and types
-from .middleware import Middleware, MiddlewareType, MiddlewareCallable
-from .routing import Router, Route
-from .exceptions import (
-    HTTPException, BadRequest, NotFound, Forbidden,
-    ValidationError, APIException
-)
-from .rate_limiting import RateLimiter, default_rate_limiter
-from .pagination import PaginationParams, PageNumberPaginator, paginate
-from .templating import TemplateEngineManager
-from .security import Security, CryptoUtils
-
-# Static file serving
-from .static import (
-    StaticFileMiddleware, StaticFileHandler, setup_static_files,
-    create_static_route, get_static_url, ensure_static_dirs
-)
+# Core components
+from pydance.core.server.application import Application as App, Application as Pydance
+from pydance.core.http.request import Request
+from pydance.core.http.response import Response
+from pydance.core.routing import Router, Route, RouteGroup
+from pydance.core.middleware import MiddlewareStack, cors_middleware, logging_middleware, json_middleware
+from pydance.core.di import Container, DatabaseService, CacheService, LoggerService, setup_default_services
+from pydance.core.config import Config
+from pydance.core.types import ASGIApp, Scope, Receive, Send, Message
 
 __all__ = [
-    # Server
-    'Application', 'Server', 'AppConfig',
-    # HTTP
-    'Request', 'Response',
-    # WebSocket
-    'WebSocket',
-    # Routing & Middleware
-    'Router', 'Route', 'Middleware', 'MiddlewareType', 'MiddlewareCallable',
-    # Exceptions
-    'HTTPException', 'BadRequest', 'NotFound', 'Forbidden',
-    'ValidationError', 'APIException',
-    # Utilities
-    'RateLimiter', 'default_rate_limiter',
-    'PaginationParams', 'PageNumberPaginator', 'paginate',
-    'TemplateEngineManager', 'Security', 'CryptoUtils',
-    # Static files
-    'StaticFileMiddleware', 'StaticFileHandler', 'setup_static_files',
-    'create_static_route', 'get_static_url', 'ensure_static_dirs'
+    # Core App
+    'App', 'Pydance', 'Request', 'Response',
+    # Routing
+    'Router', 'Route', 'RouteGroup',
+    # Middleware
+    'MiddlewareStack', 'cors_middleware', 'logging_middleware', 'json_middleware',
+    # DI
+    'Container', 'DatabaseService', 'CacheService', 'LoggerService', 'setup_default_services',
+    # Config & Types
+    'Config', 'ASGIApp', 'Scope', 'Receive', 'Send', 'Message'
 ]

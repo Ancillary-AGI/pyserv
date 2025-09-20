@@ -206,6 +206,7 @@ class PostgresBackend:
         query = '''
             CREATE TABLE IF NOT EXISTS migrations (
                 id SERIAL PRIMARY KEY,
+                migration_id VARCHAR(255) UNIQUE,
                 model_name VARCHAR(255) NOT NULL,
                 version INTEGER NOT NULL,
                 schema_definition TEXT NOT NULL,
@@ -216,14 +217,21 @@ class PostgresBackend:
         '''
         await self.execute_query(query)
 
-    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict) -> None:
+    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict, migration_id: str = None) -> None:
         """Insert a migration record for PostgreSQL"""
         import json
-        query = '''
-            INSERT INTO migrations (model_name, version, schema_definition, operations)
-            VALUES ($1, $2, $3, $4)
-        '''
-        params = (model_name, version, json.dumps(schema_definition), json.dumps(operations))
+        if migration_id:
+            query = '''
+                INSERT INTO migrations (migration_id, model_name, version, schema_definition, operations)
+                VALUES ($1, $2, $3, $4, $5)
+            '''
+            params = (migration_id, model_name, version, json.dumps(schema_definition), json.dumps(operations))
+        else:
+            query = '''
+                INSERT INTO migrations (model_name, version, schema_definition, operations)
+                VALUES ($1, $2, $3, $4)
+            '''
+            params = (model_name, version, json.dumps(schema_definition), json.dumps(operations))
         await self.execute_query(query, params)
 
     async def get_applied_migrations(self) -> Dict[str, int]:

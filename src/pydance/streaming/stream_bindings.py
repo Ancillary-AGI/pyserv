@@ -375,45 +375,93 @@ class PredictiveCache:
 
 # C++ Core Integration Classes
 class QuantumStreamServer:
-    """C++ Quantum Stream Server wrapper"""
+    """C++ Quantum Stream Server wrapper with enhanced Python integration"""
     def __init__(self):
         if _stream_core:
             self._server = _stream_core.create_stream_server()
         else:
             self._server = None
+        self._callbacks = {}
+        self._running = False
 
     def __del__(self):
         if _stream_core and self._server:
             _stream_core.destroy_stream_server(self._server)
 
     def start_server(self, address: str, port: int):
+        """Start the streaming server with Python callbacks"""
         if _stream_core and self._server:
-            _stream_core.start_stream_server(self._server, address.encode(), port)
+            self._running = True
+            try:
+                _stream_core.start_stream_server(self._server, address.encode(), port)
+            except KeyboardInterrupt:
+                self._running = False
+                print("Server stopped by user")
         else:
             print("C++ streaming core not available")
 
+    def register_callback(self, event_type: str, callback: Callable):
+        """Register Python callback for streaming events"""
+        self._callbacks[event_type] = callback
+
+    def is_running(self) -> bool:
+        """Check if server is running"""
+        return self._running
+
+    def stop_server(self):
+        """Stop the streaming server"""
+        self._running = False
+
 
 class QuantumMediaEngine:
-    """C++ Quantum Media Engine wrapper"""
+    """C++ Quantum Media Engine wrapper with enhanced processing"""
     def __init__(self):
         if _stream_core:
             self._engine = _stream_core.create_media_engine()
         else:
             self._engine = None
+        self._frame_processors = []
+        self._audio_processors = []
 
     def __del__(self):
         if _stream_core and self._engine:
             _stream_core.destroy_media_engine(self._engine)
 
-    def process_video_frame(self, frame_data: bytes):
-        if _stream_core and self._engine:
-            data_ptr = (ctypes.c_uint8 * len(frame_data))(*frame_data)
-            _stream_core.process_video_frame(self._engine, data_ptr, len(frame_data))
+    def add_frame_processor(self, processor: Callable[[bytes], bytes]):
+        """Add Python frame processor to the pipeline"""
+        self._frame_processors.append(processor)
 
-    def process_audio_frame(self, audio_data: bytes):
+    def add_audio_processor(self, processor: Callable[[bytes], bytes]):
+        """Add Python audio processor to the pipeline"""
+        self._audio_processors.append(processor)
+
+    def process_video_frame(self, frame_data: bytes) -> bytes:
+        """Process video frame with Python processors"""
         if _stream_core and self._engine:
-            data_ptr = (ctypes.c_uint8 * len(audio_data))(*audio_data)
-            _stream_core.process_audio_frame(self._engine, data_ptr, len(audio_data))
+            # Apply Python processors first
+            processed_data = frame_data
+            for processor in self._frame_processors:
+                processed_data = processor(processed_data)
+
+            # Then pass to C++ engine
+            data_ptr = (ctypes.c_uint8 * len(processed_data))(*processed_data)
+            _stream_core.process_video_frame(self._engine, data_ptr, len(processed_data))
+            return processed_data
+        return frame_data
+
+    def process_audio_frame(self, audio_data: bytes) -> bytes:
+        """Process audio frame with Python processors"""
+        if _stream_core and self._engine:
+            # Apply Python processors first
+            processed_data = audio_data
+            for processor in self._audio_processors:
+                processed_data = processor(processed_data)
+
+            # Then pass to C++ engine
+            data_ptr = (ctypes.c_uint8 * len(processed_data))(*processed_data)
+            _stream_core.process_audio_frame(self._engine, data_ptr, len(processed_data))
+            return processed_data
+        return audio_data
 
 
 class NetworkAwareScheduler:

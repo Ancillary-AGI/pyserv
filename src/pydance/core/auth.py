@@ -12,11 +12,11 @@ from typing import Dict, List, Any, Optional, Union, Callable, Type
 from datetime import datetime, timedelta
 from functools import wraps
 
-from ..models.user import BaseUser
-from ..core.form_validation import EmailField, CharField
-from ..utils.types import ValidationError
-from ..core.caching import get_cache_manager
-from ..core.security import get_security_manager
+from pydance.models.user import BaseUser
+from pydance.core.form_validation import EmailField, CharField
+from pydance.utils.types import ValidationError
+from pydance.core.caching import get_cache_manager
+from pydance.core.security import get_security_manager
 
 # Use BaseUser from models/user.py instead of creating a duplicate
 User = BaseUser
@@ -381,7 +381,7 @@ def login_required(func: Callable) -> Callable:
     async def wrapper(request, *args, **kwargs):
         if not hasattr(request, 'user') or not request.user:
             # Return 401 Unauthorized
-            from ..core.response import Response
+            from pydance.core.response import Response
             return Response("Authentication required", status_code=401)
 
         return await func(request, *args, **kwargs)
@@ -394,11 +394,11 @@ def permission_required(permission: str) -> Callable:
         @wraps(func)
         async def wrapper(request, *args, **kwargs):
             if not hasattr(request, 'user') or not request.user:
-                from ..core.response import Response
+                from pydance.core.response import Response
                 return Response("Authentication required", status_code=401)
 
             if not request.user.has_perm(permission):
-                from ..core.response import Response
+                from pydance.core.response import Response
                 return Response("Permission denied", status_code=403)
 
             return await func(request, *args, **kwargs)
@@ -412,11 +412,11 @@ def role_required(role: str) -> Callable:
         @wraps(func)
         async def wrapper(request, *args, **kwargs):
             if not hasattr(request, 'user') or not request.user:
-                from ..core.response import Response
+                from pydance.core.response import Response
                 return Response("Authentication required", status_code=401)
 
             if not request.user.has_role(role):
-                from ..core.response import Response
+                from pydance.core.response import Response
                 return Response("Role required", status_code=403)
 
             return await func(request, *args, **kwargs)

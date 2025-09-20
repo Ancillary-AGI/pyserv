@@ -190,6 +190,7 @@ class SQLiteBackend:
         query = '''
             CREATE TABLE IF NOT EXISTS migrations (
                 id INTEGER PRIMARY KEY,
+                migration_id TEXT UNIQUE,
                 model_name TEXT NOT NULL,
                 version INTEGER NOT NULL,
                 schema_definition TEXT NOT NULL,
@@ -201,14 +202,21 @@ class SQLiteBackend:
         await self.execute_query(query)
         self.connection.commit()
 
-    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict) -> None:
+    async def insert_migration_record(self, model_name: str, version: int, schema_definition: dict, operations: dict, migration_id: str = None) -> None:
         """Insert a migration record for SQLite"""
         import json
-        query = '''
-            INSERT INTO migrations (model_name, version, schema_definition, operations)
-            VALUES (?, ?, ?, ?)
-        '''
-        params = (model_name, version, json.dumps(schema_definition), json.dumps(operations))
+        if migration_id:
+            query = '''
+                INSERT INTO migrations (migration_id, model_name, version, schema_definition, operations)
+                VALUES (?, ?, ?, ?, ?)
+            '''
+            params = (migration_id, model_name, version, json.dumps(schema_definition), json.dumps(operations))
+        else:
+            query = '''
+                INSERT INTO migrations (model_name, version, schema_definition, operations)
+                VALUES (?, ?, ?, ?)
+            '''
+            params = (model_name, version, json.dumps(schema_definition), json.dumps(operations))
         await self.execute_query(query, params)
         self.connection.commit()
 

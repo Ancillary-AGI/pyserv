@@ -12,12 +12,12 @@ from unittest.mock import Mock, patch, MagicMock
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from src.pydance.migrations.migration import Migration
-from src.pydance.migrations.migrator import Migrator
-from src.pydance.migrations.framework import MigrationFramework
-from src.pydance.database.config import DatabaseConfig
-from src.pydance.models.base import BaseModel
-from src.pydance.utils.types import Field, StringField, IntegerField
+from pydance.migrations.migration import Migration
+from pydance.migrations.migrator import Migrator
+from pydance.migrations.framework import MigrationFramework
+from pydance.database.config import DatabaseConfig
+from pydance.models.base import BaseModel
+from pydance.utils.types import Field, StringField, IntegerField
 
 
 class TestMigration:

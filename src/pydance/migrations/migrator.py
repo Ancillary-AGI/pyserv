@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional, Tuple, Type
 from datetime import datetime
 
 from .migration import Migration
-from ..database.database import DatabaseConnection
+from ..core.database_pool import OptimizedDatabaseConnection
 from ..database.config import DatabaseConfig
 from ..database.backends import get_backend
 from ..models.base import BaseModel
@@ -41,7 +41,7 @@ class Migrator:
 
     async def initialize(self):
         """Create migrations table/collection if it doesn't exist and load applied migrations"""
-        db = DatabaseConnection.get_instance(self.db_config)
+        db = OptimizedDatabaseConnection.get_instance(self.db_config)
 
         # Create migrations table/collection using backend
         await db.backend.create_migrations_table()
@@ -101,7 +101,7 @@ class Migrator:
             print(f"{model_name} is already at version {current_version} (target: {target_version})")
             return
 
-        db = DatabaseConnection.get_instance(self.db_config)
+        db = OptimizedDatabaseConnection.get_instance(self.db_config)
 
         print(f"Migrating {model_name} from v{current_version} to v{target_version}")
 
@@ -180,7 +180,7 @@ class Migrator:
         model_name = model_class.__name__
         collection_name = model_class.get_table_name()
 
-        db = DatabaseConnection.get_instance(self.db_config)
+        db = OptimizedDatabaseConnection.get_instance(self.db_config)
 
         try:
             async with db.get_connection() as conn:
@@ -223,14 +223,15 @@ class Migrator:
 
     async def execute_migration(self, migration: Migration) -> bool:
         """Execute a single migration using backend abstraction"""
-        db = DatabaseConnection.get_instance(self.db_config)
+        db = OptimizedDatabaseConnection.get_instance(self.db_config)
 
         # Use backend to insert migration record
         await db.backend.insert_migration_record(
             migration.model_name,
             migration.to_version,
             migration.schema_definition,
-            migration.operations
+            migration.operations,
+            migration.migration_id
         )
 
         # Update in-memory tracking
@@ -239,7 +240,7 @@ class Migrator:
             self.migration_schemas[migration.model_name] = {}
         self.migration_schemas[migration.model_name][migration.to_version] = migration.schema_definition
 
-        print(f"✓ Applied migration for {migration.model_name} to v{migration.to_version}")
+        print(f"✓ Applied migration '{migration.migration_id}' for {migration.model_name} to v{migration.to_version}")
         return True
 
 
@@ -257,7 +258,7 @@ class Migrator:
             print("Downgrade is not typically supported for MongoDB in the same way as SQL databases")
             return
 
-        db = DatabaseConnection.get_instance(self.db_config)
+        db = OptimizedDatabaseConnection.get_instance(self.db_config)
 
         print(f"Downgrading {model_name} from v{current_version} to v{target_version}")
 
@@ -322,7 +323,7 @@ class Migrator:
         model_name = model_class.__name__
         table_name = model_class.get_table_name()
 
-        db = DatabaseConnection.get_instance(self.db_config)
+        db = OptimizedDatabaseConnection.get_instance(self.db_config)
 
         # Use backend to drop table/collection
         await db.backend.drop_table(table_name)
