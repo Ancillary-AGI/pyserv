@@ -3,7 +3,7 @@ Integration tests for WebSocket functionality
 """
 import pytest
 
-from pydance import Application
+from pyserv import Application
 
 
 @pytest.mark.integration
@@ -43,3 +43,7 @@ class TestWebSocketIntegration:
         # For now, just verify the route handler is callable
         ws_route = ws_app.router.websocket_routes[0]
         assert callable(ws_route.handler)
+
+
+
+

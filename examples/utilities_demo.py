@@ -1,7 +1,7 @@
 """
-PyDance Utilities Comprehensive Demo
+Pyserv  Utilities Comprehensive Demo
 
-This example demonstrates all the utility functions available in PyDance:
+This example demonstrates all the utility functions available in Pyserv :
 - Number formatting and operations
 - String manipulation and validation
 - Date/time handling with UTC and locale support
@@ -16,7 +16,7 @@ Run with: python examples/utilities_demo.py
 import asyncio
 from datetime import datetime, date
 from decimal import Decimal
-from pydance import (
+from pyserv import (
     # Number utilities
     NumberUtils,
 
@@ -299,7 +299,7 @@ def demonstrate_compression_encoding():
     print("=" * 50)
 
     # Test data
-    test_data = b"This is a test string for compression and encoding utilities in PyDance framework."
+    test_data = b"This is a test string for compression and encoding utilities in Pyserv  framework."
     json_data = {"message": "Hello World", "timestamp": datetime.now().isoformat(), "data": list(range(100))}
 
     # Gzip compression
@@ -325,7 +325,7 @@ def demonstrate_compression_encoding():
 
 async def main():
     """Main demonstration function"""
-    print("🚀 PyDance Utilities Comprehensive Demo")
+    print("🚀 Pyserv  Utilities Comprehensive Demo")
     print("=" * 60)
     print()
 
@@ -353,3 +353,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+
+

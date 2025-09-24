@@ -1,0 +1,36 @@
+{
+  "bad_request": "Solicitud Incorrecta",
+  "unauthorized": "No Autorizado",
+  "forbidden": "Prohibido",
+  "not_found": "No Encontrado",
+  "internal_server_error": "Error Interno del Servidor",
+  "user_not_found": "Usuario no encontrado",
+  "user_already_exists": "El usuario ya existe",
+  "invalid_credentials": "Credenciales inválidas",
+  "password_too_weak": "La contraseña no cumple con los requisitos de fortaleza",
+  "email_already_exists": "La dirección de correo electrónico ya está registrada",
+  "username_already_exists": "El nombre de usuario ya está ocupado",
+  "invalid_email_format": "Formato de correo electrónico inválido",
+  "invalid_username_format": "Formato de nombre de usuario inválido",
+  "account_locked": "La cuenta está bloqueada",
+  "account_not_verified": "La cuenta no está verificada",
+  "account_suspended": "La cuenta está suspendida",
+  "account_inactive": "La cuenta está inactiva",
+  "validation_error": "Error de validación",
+  "invalid_json": "JSON inválido",
+  "database_error": "Error de base de datos",
+  "record_not_found": "Registro no encontrado",
+  "token_expired": "El token ha expirado",
+  "token_invalid": "Token inválido",
+  "permission_denied": "Permiso denegado",
+  "file_too_large": "Archivo demasiado grande. Tamaño máximo: {max_size} bytes, tamaño actual: {actual_size} bytes",
+  "invalid_file_type": "Tipo de archivo inválido '{actual_type}'. Tipos permitidos: {allowed_types}",
+  "rate_limit_exceeded": "Límite de tasa excedido",
+  "missing_configuration": "Falta la configuración requerida '{key}'",
+  "unsupported_hash_algorithm": "Algoritmo hash no soportado: {algorithm}",
+  "current_password_incorrect": "La contraseña actual es incorrecta"
+}
+
+
+
+

@@ -1,5 +1,5 @@
-# Core PyDance dependencies (minimal installation)
-# Install with: pip install pydance
+# Core Pyserv  dependencies (minimal installation)
+# Install with: pip install pyserv 
 uvloop>=0.15.0; sys_platform != 'win32'
 httptools>=0.3.0
 jinja2>=3.0.0
@@ -26,13 +26,17 @@ aiohttp>=3.8.0
 psutil>=5.8.0
 
 # Optional dependencies for extended functionality:
-# Database support: pip install pydance[database]
-# Web3/Blockchain: pip install pydance[web3]
-# Monitoring: pip install pydance[monitoring]
-# Email features: pip install pydance[email]
-# Storage: pip install pydance[storage]
-# Microservices: pip install pydance[microservices]
-# Streaming: pip install pydance[streaming]
-# Documentation: pip install pydance[docs]
-# Development: pip install pydance[dev]
-# All features: pip install pydance[all]
+# Database support: pip install pyserv [database]
+# Web3/Blockchain: pip install pyserv [web3]
+# Monitoring: pip install pyserv [monitoring]
+# Email features: pip install pyserv [email]
+# Storage: pip install pyserv [storage]
+# Microservices: pip install pyserv [microservices]
+# Streaming: pip install pyserv [streaming]
+# Documentation: pip install pyserv [docs]
+# Development: pip install pyserv [dev]
+# All features: pip install pyserv [all]
+
+
+
+

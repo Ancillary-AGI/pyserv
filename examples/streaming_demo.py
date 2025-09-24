@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PyDance Ultra-Low Latency Streaming Demo
+Pyserv  Ultra-Low Latency Streaming Demo
 Demonstrates advanced streaming with C/C++ core and enterprise security
 """
 
@@ -13,13 +13,13 @@ from typing import Dict, List, Optional, Any
 import hashlib
 import struct
 
-# PyDance Framework Imports
-from pydance import Application
-from pydance.security import (
+# Pyserv  Framework Imports
+from pyserv import Application
+from pyserv.security import (
     get_iam_system, get_crypto_manager,
     get_zero_trust_network, get_defense_in_depth
 )
-from pydance.streaming import (
+from pyserv.streaming import (
     UltraStreamServer, StreamManager, StreamType, StreamConfig,
     QuantumMediaEngine, NetworkAwareScheduler,
     AdaptiveChunkScheduler, PredictiveCache,
@@ -31,7 +31,7 @@ class StreamingApplication:
     """Complete streaming application with enterprise features"""
 
     def __init__(self):
-        # Initialize PyDance components
+        # Initialize Pyserv  components
         self.http_server = Application()
         self.stream_server = UltraStreamServer(host="127.0.0.1", port=8081)
         self.media_engine = QuantumMediaEngine()
@@ -60,7 +60,7 @@ class StreamingApplication:
 
     async def initialize(self):
         """Initialize the streaming application"""
-        print("🚀 Initializing PyDance Ultra-Low Latency Streaming System...")
+        print("🚀 Initializing Pyserv  Ultra-Low Latency Streaming System...")
 
         # Create default streams
         await self._create_default_streams()
@@ -293,7 +293,7 @@ class StreamingApplication:
                 'content_type': 'application/json',
                 'body': json.dumps({
                     'status': 'healthy',
-                    'server': 'PyDance Ultra-Low Latency Streaming',
+                    'server': 'Pyserv  Ultra-Low Latency Streaming',
                     'version': '1.0.0',
                     'uptime': time.time(),
                     'streams': len(self.streams),
@@ -440,7 +440,7 @@ class StreamProducer:
 
 async def main():
     """Main entry point"""
-    print("🎪 PyDance Ultra-Low Latency Streaming Demo")
+    print("🎪 Pyserv  Ultra-Low Latency Streaming Demo")
     print("=" * 50)
 
     # Create streaming application
@@ -472,3 +472,7 @@ if __name__ == "__main__":
 
     # Run the demo
     asyncio.run(main())
+
+
+
+

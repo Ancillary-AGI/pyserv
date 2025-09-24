@@ -1,12 +1,12 @@
 """
-Security tests for Pydance framework
+Security tests for Pyserv  framework
 """
 import pytest
 import json
 from unittest.mock import patch, MagicMock
 
-from pydance import Application
-from pydance.core.exceptions import HTTPException
+from pyserv import Application
+from pyserv.exceptions import HTTPException
 
 
 @pytest.mark.security

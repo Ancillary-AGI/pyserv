@@ -1,5 +1,5 @@
 """
-Structured logging system for Pydance framework.
+Structured logging system for Pyserv  framework.
 """
 
 import logging
@@ -198,3 +198,7 @@ def critical(message: str, extra: Optional[Dict[str, Any]] = None, logger_name: 
 def exception(message: str, extra: Optional[Dict[str, Any]] = None, logger_name: str = 'app'):
     """Log exception"""
     get_logger(logger_name).exception(message, extra)
+
+
+
+

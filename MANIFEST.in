@@ -28,28 +28,28 @@ recursive-include examples *.css
 recursive-include examples *.js
 
 # Static files
-recursive-include src/pydance/static *.css
-recursive-include src/pydance/static *.js
-recursive-include src/pydance/static *.png
-recursive-include src/pydance/static *.jpg
-recursive-include src/pydance/static *.jpeg
-recursive-include src/pydance/static *.gif
-recursive-include src/pydance/static *.svg
-recursive-include src/pydance/static *.ico
-recursive-include src/pydance/static *.woff
-recursive-include src/pydance/static *.woff2
-recursive-include src/pydance/static *.ttf
-recursive-include src/pydance/static *.eot
+recursive-include src/pyserv/static *.css
+recursive-include src/pyserv/static *.js
+recursive-include src/pyserv/static *.png
+recursive-include src/pyserv/static *.jpg
+recursive-include src/pyserv/static *.jpeg
+recursive-include src/pyserv/static *.gif
+recursive-include src/pyserv/static *.svg
+recursive-include src/pyserv/static *.ico
+recursive-include src/pyserv/static *.woff
+recursive-include src/pyserv/static *.woff2
+recursive-include src/pyserv/static *.ttf
+recursive-include src/pyserv/static *.eot
 
 # Templates
-recursive-include src/pydance/templates *.html
-recursive-include src/pydance/templates *.jinja
-recursive-include src/pydance/templates *.txt
+recursive-include src/pyserv/templates *.html
+recursive-include src/pyserv/templates *.jinja
+recursive-include src/pyserv/templates *.txt
 
 # Translations
-recursive-include src/pydance/translations *.json
-recursive-include src/pydance/translations *.po
-recursive-include src/pydance/translations *.mo
+recursive-include src/pyserv/translations *.json
+recursive-include src/pyserv/translations *.po
+recursive-include src/pyserv/translations *.mo
 
 # Configuration files
 include config.py.example
@@ -118,3 +118,7 @@ global-exclude *.pyc
 global-exclude __pycache__
 global-exclude .DS_Store
 global-exclude .git*
+
+
+
+

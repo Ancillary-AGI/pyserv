@@ -1,12 +1,12 @@
 """
-Regression tests for Pydance framework
+Regression tests for Pyserv  framework
 These tests ensure that previously fixed bugs don't reappear
 """
 import pytest
 from unittest.mock import patch, MagicMock
 
-from pydance import Application
-from pydance.core.exceptions import HTTPException
+from pyserv import Application
+from pyserv.exceptions import HTTPException
 
 
 @pytest.mark.regression
@@ -132,7 +132,7 @@ class TestRegression:
 
     def test_route_pattern_compilation_regression(self):
         """Regression test for route pattern compilation"""
-        from pydance.core.routing import Route
+        from pyserv.routing import Route
 
         # Test various route patterns that previously caused issues
         test_patterns = [
@@ -246,10 +246,10 @@ class TestRegression:
         """Regression test for import errors"""
         # Test that all main imports work
         try:
-            from pydance import Application, AppConfig
-            from pydance.core.routing import Router, Route
-            from pydance.core.exceptions import HTTPException
-            from pydance.core.security import Security, CryptoUtils
+            from pyserv import Application, AppConfig
+            from pyserv.routing import Router, Route
+            from pyserv.exceptions import HTTPException
+            from pyserv.security import Security, CryptoUtils
         except ImportError as e:
             pytest.fail(f"Import error: {e}")
 

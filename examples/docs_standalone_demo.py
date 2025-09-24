@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone API Documentation Demo
-Demonstrates PyDance API documentation without full framework dependencies.
+Demonstrates Pyserv  API documentation without full framework dependencies.
 """
 
 import sys
@@ -72,8 +72,8 @@ class APISchema:
 class APIDocumentation:
     """Main API documentation generator"""
 
-    def __init__(self, title: str = "PyDance API", version: str = "1.0.0",
-                 description: str = "PyDance Framework API"):
+    def __init__(self, title: str = "Pyserv  API", version: str = "1.0.0",
+                 description: str = "Pyserv  Framework API"):
         self.title = title
         self.version = version
         self.description = description
@@ -374,12 +374,12 @@ def health_check():
 
 def demo_api_documentation():
     """Demonstrate API documentation generation"""
-    print("🚀 PyDance API Documentation Demo (Standalone)")
+    print("🚀 Pyserv  API Documentation Demo (Standalone)")
     print("=" * 55)
 
     # Create API documentation instance
     docs = APIDocumentation(
-        title="PyDance Quantum-Secure API",
+        title="Pyserv  Quantum-Secure API",
         version="2.0.0",
         description="A quantum-resistant web framework API with advanced security features"
     )
@@ -604,3 +604,7 @@ if __name__ == "__main__":
         print(f"❌ Demo failed: {e}")
         import traceback
         traceback.print_exc()
+
+
+
+

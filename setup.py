@@ -1,5 +1,5 @@
 """
-PyDance Framework Setup
+Pyserv  Framework Setup
 High-performance web framework with C/C++ extensions
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 def get_version():
     """Get version from version file"""
-    version_file = Path(__file__).parent / "src" / "pydance" / "__init__.py"
+    version_file = Path(__file__).parent / "src" / "pyserv" / "__init__.py"
     if version_file.exists():
         with open(version_file, 'r') as f:
             for line in f:
@@ -170,10 +170,10 @@ def check_dependencies():
 
 # Define C extension
 server_core_extension = Extension(
-    'pydance.core.pydance_server_core',
-    sources=['src/pydance/core/server_core.c'],
+    'pyserv.core.pyserv_server_core',
+    sources=['src/pyserv/core/server_core.c'],
     include_dirs=[
-        'src/pydance/core',
+        'src/pyserv/core',
         '/usr/include',
         '/usr/local/include',
     ] + get_ssl_includes(),
@@ -191,7 +191,7 @@ server_core_extension = Extension(
     extra_link_args=get_link_args(),
     define_macros=[
         ('HAVE_SSL', '1' if has_ssl() else '0'),
-        ('PYDANCE_VERSION', f'"{get_version()}"'),
+        ('PYSERV_VERSION', f'"{get_version()}"'),
     ],
     language='c',
 )
@@ -225,18 +225,18 @@ def read_requirements():
 
 
 setup(
-    name="pydance",
+    name="pyserv",
     version=get_version(),
-    author="PyDance Team",
-    author_email="team@pydance.dev",
+    author="Pyserv  Team",
+    author_email="team@pyserv.dev",
     description="High-Performance Web Framework with C/C++ Core",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/pydance/pydance",
+    url="https://github.com/pyserv/pyserv",
     project_urls={
-        "Documentation": "https://pydance.dev/docs",
-        "Source": "https://github.com/pydance/pydance",
-        "Tracker": "https://github.com/pydance/pydance/issues",
+        "Documentation": "https://pyserv.dev/docs",
+        "Source": "https://github.com/pyserv/pyserv",
+        "Tracker": "https://github.com/pyserv/pyserv/issues",
     },
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -258,7 +258,7 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     package_data={
-        "pydance": [
+        "pyserv": [
             "static/css/*.css",
             "static/js/*.js",
             "translations/*.json",
@@ -322,8 +322,8 @@ setup(
     ext_modules=extensions if build_extensions else [],
     entry_points={
         "console_scripts": [
-            "pydance=pydance.cli:main",
-            "pydance-admin=pydance.cli:admin",
+            "pyserv=pyserv.cli:main",
+            "pyserv-admin=pyserv.cli:admin",
         ],
     },
     zip_safe=False,

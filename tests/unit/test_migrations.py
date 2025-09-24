@@ -12,12 +12,12 @@ from unittest.mock import Mock, patch, MagicMock
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from pydance.migrations.migration import Migration
-from pydance.migrations.migrator import Migrator
-from pydance.migrations.framework import MigrationFramework
-from pydance.database.config import DatabaseConfig
-from pydance.models.base import BaseModel
-from pydance.utils.types import Field, StringField, IntegerField
+from pyserv.migrations.migration import Migration
+from pyserv.migrations.migrator import Migrator
+from pyserv.migrations.framework import MigrationFramework
+from pyserv.database.config import DatabaseConfig
+from pyserv.models.base import BaseModel
+from pyserv.utils.types import Field, StringField, IntegerField
 
 
 class TestMigration:
@@ -138,7 +138,7 @@ class TestMigrator:
         assert migrator.applied_migrations == {}
         assert migrator.migration_schemas == {}
 
-    @patch('src.pydance.migrations.migrator.DatabaseConnection')
+    @patch('src.pyserv .migrations.migrator.DatabaseConnection')
     async def test_initialize_sqlite(self, mock_db_conn, migrator):
         """Test SQLite initialization"""
         migrator.db_config.is_sqlite = True
@@ -204,7 +204,7 @@ class TestMigrationFramework:
         assert framework.app_package == 'test_app'
         assert framework.discovered_models == []
 
-    @patch('src.pydance.migrations.framework.DatabaseConnection')
+    @patch('src.pyserv .migrations.framework.DatabaseConnection')
     async def test_initialize_framework(self, mock_db_conn, framework):
         """Test framework initialization"""
         mock_conn_instance = Mock()
@@ -356,3 +356,7 @@ class TestMigrationWorkflow:
         current_version = 0
         target_version = getattr(test_model, '_migration_version', 1)
         assert target_version > current_version
+
+
+
+

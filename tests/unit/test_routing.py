@@ -1,9 +1,9 @@
 """
-Unit tests for Pydance Routing
+Unit tests for Pyserv  Routing
 """
 import pytest
 
-from pydance.core.routing import Router, Route, WebSocketRoute
+from pyserv.routing import Router, Route, WebSocketRoute
 
 
 class TestRoute:

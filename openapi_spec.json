@@ -1,12 +1,12 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "PyDance API",
+    "title": "Pyserv  API",
     "description": "High-Performance Web Framework with C/C++ Core",
     "version": "1.0.0",
     "contact": {
-      "name": "PyDance Team",
-      "email": "team@pydance.dev"
+      "name": "Pyserv  Team",
+      "email": "team@pyserv .dev"
     },
     "license": {
       "name": "MIT",
@@ -19,7 +19,7 @@
       "description": "Development server"
     },
     {
-      "url": "https://api.pydance.dev",
+      "url": "https://api.pyserv .dev",
       "description": "Production server"
     }
   ],
@@ -38,7 +38,7 @@
                   "properties": {
                     "message": {
                       "type": "string",
-                      "example": "Welcome to PyDance API"
+                      "example": "Welcome to Pyserv  API"
                     },
                     "version": {
                       "type": "string",
@@ -471,3 +471,7 @@
     }
   ]
 }
+
+
+
+

@@ -1,4 +1,4 @@
-# Multi-stage build for PyDance framework
+# Multi-stage build for Pyserv  framework
 FROM python:3.11-slim as base
 
 # Set environment variables
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN groupadd -r pydance && useradd -r -g pydance pydance
+RUN groupadd -r pyserv  && useradd -r -g pyserv  pyserv 
 
 # Set work directory
 WORKDIR /app
@@ -43,10 +43,10 @@ COPY README.md .
 RUN pip install -e .
 
 # Create logs directory
-RUN mkdir -p /app/logs && chown -R pydance:pydance /app
+RUN mkdir -p /app/logs && chown -R pyserv :pyserv  /app
 
 # Switch to non-root user
-USER pydance
+USER pyserv 
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
@@ -56,7 +56,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Default command
-CMD ["python", "-c", "from pydance import Application; app = Application(); app.run(host='0.0.0.0', port=8000)"]
+CMD ["python", "-c", "from pyserv import Application; app = Application(); app.run(host='0.0.0.0', port=8000)"]
 
 # Development stage
 FROM base as development
@@ -92,13 +92,13 @@ RUN mkdir -p /app/logs
 EXPOSE 8000
 
 # Default command for development
-CMD ["python", "-m", "pydance.cli", "start", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "pyserv .cli", "start", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # Testing stage
 FROM development as testing
 
 # Run tests
-RUN pytest tests/ -v --cov=src/pydance --cov-report=xml --cov-report=term-missing
+RUN pytest tests/ -v --cov=src/pyserv --cov-report=xml --cov-report=term-missing
 
 # Build stage for CI/CD
 FROM base as builder
@@ -120,11 +120,15 @@ COPY --from=builder /app/dist/*.whl /tmp/
 RUN pip install /tmp/*.whl && rm /tmp/*.whl
 
 # Create non-root user and directories
-RUN groupadd -r pydance && useradd -r -g pydance pydance && \
-    mkdir -p /app/logs && chown -R pydance:pydance /app
+RUN groupadd -r pyserv  && useradd -r -g pyserv  pyserv  && \
+    mkdir -p /app/logs && chown -R pyserv :pyserv  /app
 
-USER pydance
+USER pyserv 
 
 EXPOSE 8000
 
-CMD ["python", "-c", "from pydance import Application; app = Application(); app.run(host='0.0.0.0', port=8000)"]
+CMD ["python", "-c", "from pyserv import Application; app = Application(); app.run(host='0.0.0.0', port=8000)"]
+
+
+
+

@@ -95,3 +95,7 @@ class ColoredFormatter(logging.Formatter):
         record.levelname = levelname
 
         return message
+
+
+
+

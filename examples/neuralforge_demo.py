@@ -8,7 +8,7 @@ LLM integration, agent communication, and the sandbox economy system.
 import asyncio
 import logging
 import os
-from pydance.neuralforge import (
+from pyserv.neuralforge import (
     NeuralForge, NeuralAgent, AgentCapability,
     LLMConfig, LLMProvider
 )
@@ -306,3 +306,7 @@ if __name__ == "__main__":
         asyncio.run(simple_example())
     else:
         asyncio.run(main())
+
+
+
+

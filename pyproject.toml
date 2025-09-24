@@ -3,17 +3,17 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pydance"
+name = "pyserv"
 dynamic = ["version"]
 description = "High-Performance Web Framework with C/C++ Core"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.8"
 authors = [
-    {name = "PyDance Team", email = "team@pydance.dev"},
+    {name = "Pyserv  Team", email = "team@pyserv .dev"},
 ]
 maintainers = [
-    {name = "PyDance Team", email = "team@pydance.dev"},
+    {name = "Pyserv  Team", email = "team@pyserv .dev"},
 ]
 keywords = [
     "web",
@@ -170,19 +170,19 @@ docs = [
     "sphinx-copybutton>=0.4.0",
 ]
 all = [
-    "pydance[dev,security,performance,database,web3,monitoring,email,storage,microservices,streaming,docs]",
+    "pyserv[dev,security,performance,database,web3,monitoring,email,storage,microservices,streaming,docs]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/ancillary-ai/pydance"
-Documentation = "https://pydance.dev/docs"
-Repository = "https://github.com/ancillary-ai/pydance"
-Issues = "https://github.com/ancillary-ai/pydance/issues"
-Changelog = "https://github.com/ancillary-ai/pydance/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/ancillary-ai/pyserv "
+Documentation = "https://pyserv .dev/docs"
+Repository = "https://github.com/ancillary-ai/pyserv "
+Issues = "https://github.com/ancillary-ai/pyserv /issues"
+Changelog = "https://github.com/ancillary-ai/pyserv /blob/main/CHANGELOG.md"
 
 [project.scripts]
-pydance = "pydance.cli:main"
-pydance-admin = "pydance.cli:admin"
+pyserv = "pyserv.cli:main"
+pyserv-admin = "pyserv.cli:admin"
 
 [tool.setuptools]
 zip-safe = false
@@ -193,7 +193,7 @@ where = ["src"]
 exclude = ["tests*", "docs*", "examples*"]
 
 [tool.setuptools.package-data]
-pydance = [
+pyserv = [
     "static/css/*.css",
     "static/js/*.js",
     "translations/*.json",
@@ -202,7 +202,7 @@ pydance = [
 ]
 
 [tool.setuptools.dynamic]
-version = {file = "src/pydance/__init__.py"}
+version = {file = "src/pyserv/__init__.py"}
 
 [tool.black]
 line-length = 88
@@ -226,7 +226,7 @@ extend-exclude = '''
 profile = "black"
 multi_line_output = 3
 line_length = 88
-known_first_party = ["pydance"]
+known_first_party = ["pyserv"]
 known_third_party = [
     "uvloop",
     "httptools",
@@ -291,7 +291,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.coverage.run]
-source = ["src/pydance"]
+source = ["src/pyserv"]
 omit = [
     "*/tests/*",
     "*/test_*.py",
@@ -318,7 +318,7 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--disable-warnings",
-    "--cov=pydance",
+    "--cov=pyserv",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
     "--cov-report=xml",
@@ -340,7 +340,7 @@ filterwarnings = [
 ]
 
 [tool.towncrier]
-package = "pydance"
+package = "pyserv"
 filename = "CHANGELOG.md"
 directory = "changelog"
 title_format = "## [{version}] - {project_date}"
@@ -372,3 +372,7 @@ showcontent = true
 directory = "misc"
 name = "Miscellaneous"
 showcontent = true
+
+
+
+

@@ -1,6 +1,6 @@
 # Example of extending the BaseUser model
-from models.user import BaseUser, create_extended_user_model
-from utils.types import Field
+from pyserv.models.user import BaseUser, create_extended_user_model
+from pyserv.utils.types import Field
 
 
 class ExtendedUser(BaseUser):

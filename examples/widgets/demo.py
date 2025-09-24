@@ -1,5 +1,5 @@
 """
-Pydance Rich Widgets Demo
+Pyserv  Rich Widgets Demo
 ========================
 
 This script demonstrates the enhanced rich widgets system with advanced features,
@@ -9,18 +9,18 @@ security, and customization options.
 import os
 from pathlib import Path
 
-from .widgets import RichText, RichSelect, RichTitle
-from .widgets_extra import (
+from pyserv.widgets import RichText, RichSelect, RichTitle
+from pyserv.widgets import (
     RichFile, RichDate, RichColor, RichRating,
     RichTags, RichSlider, RichCode
 )
-from .forms import create_form
+from pyserv.widgets import create_form
 
 
 def create_enhanced_demo():
     """Create an enhanced demo with all advanced features"""
 
-    print("🎉 Pydance Enhanced Rich Widgets Demo")
+    print("🎉 Pyserv  Enhanced Rich Widgets Demo")
     print("=" * 50)
 
     # 1. Rich Text Widget with Advanced Features
@@ -31,7 +31,7 @@ def create_enhanced_demo():
         name='article_content',
         format='markdown',
         placeholder='Write your amazing article here...',
-        value='# Welcome to Pydance\n\nThis is a **powerful** rich text editor with:\n\n- Markdown support\n- HTML sanitization\n- Advanced toolbar\n- Real-time preview\n- Word count\n\n> Try it out!',
+        value='# Welcome to Pyserv \n\nThis is a **powerful** rich text editor with:\n\n- Markdown support\n- HTML sanitization\n- Advanced toolbar\n- Real-time preview\n- Word count\n\n> Try it out!',
         theme='dark',
         size='large',
         max_content_length=50000
@@ -289,7 +289,7 @@ def create_enhanced_demo():
 
 # Usage example
 article = create_article(
-    title="Pydance Widgets Guide",
+    title="Pyserv  Widgets Guide",
     content="Learn how to use rich widgets...",
     tags=['python', 'web', 'tutorial']
 )'''
@@ -309,7 +309,7 @@ article = create_article(
         name='article_title',
         level=1,
         placeholder='Enter article title...',
-        value='The Ultimate Guide to Pydance Rich Widgets',
+        value='The Ultimate Guide to Pyserv  Rich Widgets',
         allow_formatting=True,
         max_length=100,
         auto_slug=True
@@ -397,7 +397,7 @@ def generate_widget_demo_html(widget_name: str, widget) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{widget_title} Demo - Pydance Rich Widgets</title>
+    <title>{widget_title} Demo - Pyserv  Rich Widgets</title>
     <link rel="stylesheet" href="../static/css/widgets.css">
     <style>
         body {{
@@ -461,7 +461,7 @@ def generate_widget_demo_html(widget_name: str, widget) -> str:
 <body>
     <div class="demo-header">
         <h1>🎉 {widget_title} Demo</h1>
-        <p>Experience the power of Pydance Rich Widgets</p>
+        <p>Experience the power of Pyserv  Rich Widgets</p>
     </div>
 
     <div class="demo-container">
@@ -516,7 +516,7 @@ def generate_form_demo_html(form) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Complete Form Demo - Pydance Rich Widgets</title>
+    <title>Complete Form Demo - Pyserv  Rich Widgets</title>
     <link rel="stylesheet" href="../static/css/widgets.css">
     <style>
         body {{
@@ -620,13 +620,13 @@ def generate_form_demo_html(form) -> str:
     <div class="form-container">
         <div class="form-header">
             <h1>🚀 Complete Form Demo</h1>
-            <p>Experience all Pydance Rich Widgets in one comprehensive form</p>
+            <p>Experience all Pyserv  Rich Widgets in one comprehensive form</p>
         </div>
 
         <div class="form-card">
             <h2 class="form-title">Create Amazing Content</h2>
             <p class="form-description">
-                This form demonstrates every rich widget in the Pydance framework,
+                This form demonstrates every rich widget in the Pyserv  framework,
                 showcasing advanced features, security, and beautiful design.
             </p>
 
@@ -657,7 +657,7 @@ def generate_form_demo_html(form) -> str:
     <script>
         // Add some interactive enhancements
         document.addEventListener('DOMContentLoaded', function() {{
-            console.log('🎉 Pydance Rich Widgets Demo Loaded!');
+            console.log('🎉 Pyserv  Rich Widgets Demo Loaded!');
             console.log('Form contains {len(form.fields)} rich widgets');
         }});
     </script>

@@ -1,9 +1,9 @@
 """
-Integration tests for full Pydance application
+Integration tests for full Pyserv  application
 """
 import pytest
 
-from pydance import Application
+from pyserv import Application
 
 
 @pytest.mark.integration
@@ -17,7 +17,7 @@ class TestFullApplication:
 
         @app.route('/')
         async def home(request):
-            return {'message': 'Welcome to Pydance', 'status': 'ok'}
+            return {'message': 'Welcome to Pyserv ', 'status': 'ok'}
 
         @app.route('/health')
         async def health(request):
@@ -76,3 +76,7 @@ class TestFullApplication:
         assert hasattr(full_app, 'middleware_manager')
         assert hasattr(full_app, 'config')
         assert hasattr(full_app, '_exception_handlers')
+
+
+
+

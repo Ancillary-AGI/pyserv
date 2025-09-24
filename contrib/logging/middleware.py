@@ -5,10 +5,10 @@ Logging middleware for request/response logging.
 from typing import Optional
 from datetime import datetime
 
-from ...core.http.request import Request
-from ...core.http.response import Response
-from ...core.middleware import HTTPMiddleware
-from .logger import get_logger
+from pyserv.http.request import Request
+from pyserv.http.response import Response
+from pyserv.middleware import HTTPMiddleware
+from pyserv.contrib.logging.logger import get_logger
 
 
 class LoggingMiddleware(HTTPMiddleware):

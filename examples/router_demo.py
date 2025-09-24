@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PyDance Router Demo
+Pyserv  Router Demo
 Demonstrates advanced routing features including redirects, views, and fallbacks
 """
 
@@ -39,19 +39,19 @@ def handle_example_error(func):
             return None
     return wrapper
 
-from pydance.core.routing import Router, RouteType
-from pydance.views.base import TemplateView, ListView, DetailView, FormView
-from pydance.core.http.response import Response
+from pyserv.routing import Router, RouteType
+from pyserv.views.base import TemplateView, ListView, DetailView, FormView
+from pyserv.http.response import Response
 
 
 def home_handler(request):
     """Simple home page handler"""
-    return Response("<h1>Welcome to PyDance!</h1><p>This is the home page.</p>", content_type="text/html")
+    return Response("<h1>Welcome to Pyserv !</h1><p>This is the home page.</p>", content_type="text/html")
 
 
 def about_handler(request):
     """About page handler"""
-    return Response("<h1>About PyDance</h1><p>A comprehensive web framework.</p>", content_type="text/html")
+    return Response("<h1>About Pyserv </h1><p>A comprehensive web framework.</p>", content_type="text/html")
 
 
 def user_profile_handler(request, user_id):
@@ -70,7 +70,7 @@ class HomeView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['title'] = 'Welcome to PyDance'
+        context['title'] = 'Welcome to Pyserv '
         context['message'] = 'This is a class-based view!'
         return context
 
@@ -175,7 +175,7 @@ def create_demo_router():
 def demo_router_features():
     """Demonstrate router features"""
 
-    print("🚀 PyDance Router Demo")
+    print("🚀 Pyserv  Router Demo")
     print("=" * 50)
 
     router = create_demo_router()
@@ -272,7 +272,7 @@ def demo_router_features():
 def main():
     """Main function for the router demo."""
     print_header(
-        "PyDance Router Demo",
+        "Pyserv  Router Demo",
         "Demonstrates advanced routing features including redirects, views, and fallbacks"
     )
 

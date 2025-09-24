@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PyDance Enhanced Lean Template Engine Demo
+Pyserv  Enhanced Lean Template Engine Demo
 Showcasing advanced features and C++ acceleration
 """
 
@@ -9,11 +9,11 @@ import time
 import sys
 from pathlib import Path
 
-# Add the parent directory to the path so we can import pydance
+# Add the parent directory to the path so we can import pyserv
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pydance.core.templating.languages.lean import LeanTemplateEngine
-from pydance.core.templating.template_bindings import QuantumTemplateEngine, TemplateConfig, TemplateEngineMode
+from pyserv.templating.languages.lean import LeanTemplateEngine
+from pyserv.templating.template_bindings import QuantumTemplateEngine, TemplateConfig, TemplateEngineMode
 
 
 async def demo_basic_features():
@@ -85,7 +85,7 @@ async def demo_advanced_features():
 
     <footer>
         {% block footer %}
-        <p>&copy; 2025 PyDance</p>
+        <p>&copy; 2025 Pyserv </p>
         {% endblock %}
     </footer>
 </body>
@@ -144,7 +144,7 @@ async def demo_advanced_features():
 
     context = {
         'page_title': 'Advanced Template Demo',
-        'site_name': 'PyDance Blog',
+        'site_name': 'Pyserv  Blog',
         'navigation': [
             {'url': '/', 'label': 'Home'},
             {'url': '/about', 'label': 'About'},
@@ -349,7 +349,7 @@ async def demo_custom_features():
 
 async def main():
     """Main demo function"""
-    print("PyDance Enhanced Lean Template Engine Demo")
+    print("Pyserv  Enhanced Lean Template Engine Demo")
     print("=" * 50)
 
     try:

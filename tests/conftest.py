@@ -1,5 +1,5 @@
 """
-Pydance Test Configuration and Fixtures
+Pyserv  Test Configuration and Fixtures
 """
 import asyncio
 import os
@@ -10,7 +10,7 @@ from typing import AsyncGenerator, Generator
 import pytest
 from faker import Faker
 
-from pydance import Application, AppConfig
+from pyserv import Application, AppConfig
 
 
 @pytest.fixture(scope="session")
@@ -58,7 +58,7 @@ def cleanup_test_artifacts():
     """Clean up test artifacts after each test."""
     yield
     # Clean up any test files or artifacts
-    for pattern in ["*.db", "*.log", ".pydance.pid"]:
+    for pattern in ["*.db", "*.log", ".pyserv .pid"]:
         for file in Path(".").glob(pattern):
             if file.exists():
                 file.unlink()
@@ -84,3 +84,7 @@ pytest_plugins = [
     "tests.fixtures.database",
     "tests.fixtures.http",
 ]
+
+
+
+

@@ -4,8 +4,8 @@ Authentication forms for login, registration, and password reset.
 
 from typing import Optional, Dict, Any
 
-from ...widgets import TextWidget, PasswordWidget, EmailWidget, ButtonWidget
-from ...widgets.forms import Form
+from pyserv.widgets import TextWidget, PasswordWidget, EmailWidget, ButtonWidget
+from pyserv.widgets.forms import Form
 
 
 class LoginForm(Form):
@@ -43,7 +43,7 @@ class LoginForm(Form):
 
     def create_checkbox(self, name: str, label: str, **kwargs) -> 'CheckboxWidget':
         """Create a checkbox widget"""
-        from ...widgets import CheckboxWidget
+        from pyserv.widgets import CheckboxWidget
         return CheckboxWidget(name=name, label=label, **kwargs)
 
     async def validate(self, data: Dict[str, Any]) -> bool:
@@ -139,7 +139,7 @@ class RegisterForm(Form):
 
     def create_checkbox(self, name: str, label: str, **kwargs) -> 'CheckboxWidget':
         """Create a checkbox widget"""
-        from ...widgets import CheckboxWidget
+        from pyserv.widgets import CheckboxWidget
         return CheckboxWidget(name=name, label=label, **kwargs)
 
     async def validate(self, data: Dict[str, Any]) -> bool:
@@ -317,7 +317,7 @@ class ProfileUpdateForm(Form):
 
     def create_select(self, name: str, label: str, options: list, **kwargs) -> 'SelectWidget':
         """Create a select widget"""
-        from ...widgets import SelectWidget
+        from pyserv.widgets import SelectWidget
         return SelectWidget(name=name, label=label, options=options, **kwargs)
 
     async def validate(self, data: Dict[str, Any]) -> bool:
@@ -327,3 +327,7 @@ class ProfileUpdateForm(Form):
 
         # Additional validation can be added here
         return True
+
+
+
+

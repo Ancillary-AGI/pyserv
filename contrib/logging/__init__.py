@@ -1,5 +1,5 @@
 """
-Structured logging system for Pydance framework.
+Structured logging system for Pyserv  framework.
 """
 
 from .logger import Logger, get_logger, configure_logging
@@ -20,3 +20,7 @@ __all__ = [
     'ColoredFormatter',
     'LoggingMiddleware',
 ]
+
+
+
+

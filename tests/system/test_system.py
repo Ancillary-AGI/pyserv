@@ -1,5 +1,5 @@
 """
-System tests for Pydance framework - End-to-end testing
+System tests for Pyserv  framework - End-to-end testing
 """
 import subprocess
 import time
@@ -20,7 +20,7 @@ class TestSystem:
 
         # Create app.py
         app_content = '''
-from pydance import Application
+from pyserv import Application
 
 app = Application()
 
@@ -112,7 +112,7 @@ async def websocket_handler(websocket):
 
             # Test that all components can be imported and initialized
             result = subprocess.run([
-                'python', '-c', 'from pydance import Application; app = Application(); print("OK")'
+                'python', '-c', 'from pyserv import Application; app = Application(); print("OK")'
             ], capture_output=True, text=True)
 
             assert result.returncode == 0
@@ -125,3 +125,7 @@ async def websocket_handler(websocket):
 
         finally:
             os.chdir(original_cwd)
+
+
+
+

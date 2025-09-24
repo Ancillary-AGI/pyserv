@@ -104,7 +104,7 @@ logs/
 node_modules/
 
 # Static files (will be copied during build if needed)
-src/pydance/static/
+src/pyserv/static/
 static/
 
 # Examples (not needed in production)
@@ -125,3 +125,7 @@ openapi_spec.json
 # README files (not needed in container)
 *.md
 !README.md
+
+
+
+

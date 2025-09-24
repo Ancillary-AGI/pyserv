@@ -3,7 +3,7 @@ Integration tests for middleware functionality
 """
 import pytest
 
-from pydance import Application
+from pyserv import Application
 
 
 @pytest.mark.integration
@@ -72,3 +72,7 @@ class TestMiddlewareIntegration:
 
         # Verify middleware was added
         assert len(middleware_app.middleware_manager.middleware) >= 2
+
+
+
+

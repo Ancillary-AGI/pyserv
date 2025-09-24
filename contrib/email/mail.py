@@ -1,5 +1,5 @@
 """
-Email sending functionality for Pydance framework.
+Email sending functionality for Pyserv  framework.
 """
 
 import asyncio
@@ -67,6 +67,91 @@ class EmailMessage:
 
         filename = os.path.basename(filepath)
         self.attach(filename, content, mimetype)
+
+    def attach_multiple_files(self, filepaths: List[str], mimetypes: List[str] = None):
+        """Attach multiple files from filesystem"""
+        if mimetypes is None:
+            mimetypes = [None] * len(filepaths)
+
+        for filepath, mimetype in zip(filepaths, mimetypes):
+            self.attach_file(filepath, mimetype)
+
+    def attach_from_url(self, url: str, filename: str = None, mimetype: str = None):
+        """Attach a file from URL"""
+        import urllib.request
+
+        try:
+            with urllib.request.urlopen(url) as response:
+                content = response.read()
+
+            if filename is None:
+                # Extract filename from URL or Content-Disposition header
+                filename = url.split('/')[-1]
+                if '?' in filename:
+                    filename = filename.split('?')[0]
+
+            self.attach(filename, content, mimetype)
+        except Exception as e:
+            raise ValueError(f"Failed to download file from {url}: {e}")
+
+    def attach_from_bytes(self, filename: str, content: bytes, mimetype: str = None):
+        """Attach file content from bytes"""
+        self.attach(filename, content, mimetype)
+
+    def attach_from_string(self, filename: str, content: str, mimetype: str = "text/plain", encoding: str = "utf-8"):
+        """Attach text content as file"""
+        content_bytes = content.encode(encoding)
+        self.attach(filename, content_bytes, mimetype)
+
+    def attach_csv_data(self, filename: str, data: List[Dict], headers: List[str] = None):
+        """Attach CSV data from list of dictionaries"""
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=headers or data[0].keys() if data else [])
+        writer.writeheader()
+        writer.writerows(data)
+
+        self.attach_from_string(filename, output.getvalue(), "text/csv")
+
+    def attach_json_data(self, filename: str, data: Any):
+        """Attach JSON data"""
+        import json
+
+        json_string = json.dumps(data, indent=2, default=str)
+        self.attach_from_string(filename, json_string, "application/json")
+
+    def attach_excel_data(self, filename: str, data: List[Dict], sheet_name: str = "Sheet1"):
+        """Attach Excel data (requires openpyxl)"""
+        try:
+            import openpyxl
+            from openpyxl import Workbook
+        except ImportError:
+            raise ImportError("openpyxl is required for Excel attachments. Install with: pip install openpyxl")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = sheet_name
+
+        # Write headers
+        if data:
+            headers = list(data[0].keys())
+            for col, header in enumerate(headers, 1):
+                ws.cell(row=1, column=col, value=header)
+
+            # Write data
+            for row, item in enumerate(data, 2):
+                for col, header in enumerate(headers, 1):
+                    ws.cell(row=row, column=col, value=item.get(header, ""))
+
+        # Save to bytes
+        from io import BytesIO
+        bio = BytesIO()
+        wb.save(bio)
+        content = bio.getvalue()
+
+        self.attach(filename, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     def get_recipients(self) -> List[str]:
         """Get all recipients (to, cc, bcc)"""
@@ -328,3 +413,7 @@ class Mail:
             to=[user_email],
             **kwargs
         )
+
+
+
+

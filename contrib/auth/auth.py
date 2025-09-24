@@ -1,5 +1,5 @@
 """
-Authentication and authorization system for Pydance framework.
+Authentication and authorization system for Pyserv  framework.
 """
 
 import secrets
@@ -9,10 +9,10 @@ from typing import Optional, Dict, Any, List, Union, Type
 from datetime import datetime, timedelta
 from abc import ABC, abstractmethod
 
-from pydance.core.http.request import Request
-from pydance.core.http.response import Response
-from pydance.core.exceptions import HTTPException, Unauthorized, Forbidden
-from pydance.models.user import BaseUser
+from pyserv.http.request import Request
+from pyserv.http.response import Response
+from pyserv.exceptions import HTTPException, Unauthorized, Forbidden
+from pyserv.models.user import BaseUser
 from .backends import SessionBackend, TokenBackend
 
 

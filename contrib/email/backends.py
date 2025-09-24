@@ -239,3 +239,7 @@ class AsyncSMTPBackend(SMTPBackend):
         except Exception as e:
             print(f"Async SMTP sending failed: {e}")
             return False
+
+
+
+

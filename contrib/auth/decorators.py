@@ -5,13 +5,13 @@ Authentication decorators for route protection.
 from functools import wraps
 from typing import Optional, List, Callable, Any
 
-from pydance.core.http.request import Request
-from pydance.core.http.response import Response
-from pydance.core.exceptions import Unauthorized, Forbidden
-from pydance.models.user import BaseUser
+from pyserv.http.request import Request
+from pyserv.http.response import Response
+from pyserv.exceptions import Unauthorized, Forbidden
+from pyserv.models.user import BaseUser
 
 
-def login_required(auth_instance=None):
+def login_required(auth_instance=None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator to require user authentication.
 
@@ -24,9 +24,9 @@ def login_required(auth_instance=None):
         async def protected(request):
             return {'message': 'You are authenticated!'}
     """
-    def decorator(func):
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def wrapper(request: Request, *args, **kwargs):
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             # Get auth instance
             auth = auth_instance
             if auth is None and hasattr(request.app, 'state') and 'auth' in request.app.state:

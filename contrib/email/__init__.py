@@ -1,5 +1,5 @@
 """
-Email sending functionality for Pydance framework.
+Email sending functionality for Pyserv  framework.
 """
 
 from .mail import Mail, EmailMessage, EmailTemplate
@@ -15,3 +15,7 @@ __all__ = [
     'FileBackend',
     'EmailTemplateEngine',
 ]
+
+
+
+

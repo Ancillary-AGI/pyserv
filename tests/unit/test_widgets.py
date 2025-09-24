@@ -1,10 +1,10 @@
 """
-Unit tests for Pydance Rich Widgets
+Unit tests for Pyserv  Rich Widgets
 """
 import pytest
 
-from pydance.widgets.widgets import RichText, RichSelect, RichTitle
-from pydance.widgets.widgets_extra import RichFile, RichDate, RichColor, RichRating
+from pyserv.widgets.widgets import RichText, RichSelect, RichTitle
+from pyserv.widgets.widgets_extra import RichFile, RichDate, RichColor, RichRating
 
 
 class TestRichTextWidget:
@@ -172,3 +172,7 @@ class TestRichRatingWidget:
         assert rating_widget.show_half is True
         assert rating_widget.icon == '⭐'
         assert rating_widget.show_value is True
+
+
+
+

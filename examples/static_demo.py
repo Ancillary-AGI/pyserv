@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Static File Serving Demo for Pydance Framework
+Static File Serving Demo for Pyserv  Framework
 ==============================================
 
-This script demonstrates how to serve static files (CSS, JS, images) in Pydance,
+This script demonstrates how to serve static files (CSS, JS, images) in Pyserv ,
 including the widget static files.
 """
 
@@ -11,27 +11,27 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from pydance import Application
-from pydance.core import setup_static_files
-from pydance.widgets import RichText, RichSelect, RichTitle
+from pyserv import Application
+from pyserv.core import setup_static_files
+from pyserv.widgets import RichText, RichSelect, RichTitle
 
 # Create application
 app = Application()
 
 # Method 1: Quick setup (RECOMMENDED)
 # This automatically sets up both middleware and routes for static files
-setup_static_files(app, "src/pydance/static", "/static")
+setup_static_files(app, "src/pyserv/static", "/static")
 
 # Alternative methods (if you need more control):
 
 # Method 2: Manual middleware setup
-# from pydance.core import StaticFileMiddleware
-# middleware = StaticFileMiddleware("src/pydance/static", "/static")
+# from pyserv.core import StaticFileMiddleware
+# middleware = StaticFileMiddleware("src/pyserv/static", "/static")
 # app.add_middleware(middleware)
 
 # Method 3: Manual route setup
-# from pydance.core import create_static_route
-# static_handler = create_static_route("src/pydance/static", "/static")
+# from pyserv.core import create_static_route
+# static_handler = create_static_route("src/pyserv/static", "/static")
 # app.router.add_route("/static/{path:path}", static_handler, ["GET"])
 
 
@@ -41,11 +41,11 @@ async def home(request):
 
     # Create some widgets
     title = RichTitle('page_title', level=1, placeholder='Page Title')
-    title.set_value('Pydance Static File Demo')
+    title.set_value('Pyserv  Static File Demo')
 
     content = RichText('content', format='markdown')
     content.set_value("""
-# Welcome to Pydance!
+# Welcome to Pyserv !
 
 This page demonstrates **rich widgets** with **static file serving**.
 
@@ -72,7 +72,7 @@ Try editing this content!
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Pydance Static Demo</title>
+        <title>Pyserv  Static Demo</title>
 
         <!-- Widget CSS (served via static middleware) -->
         <link rel="stylesheet" href="/static/css/widgets.css">
@@ -104,7 +104,7 @@ Try editing this content!
     </head>
     <body>
         <div class="demo-section">
-            <h1 class="demo-title">🎉 Pydance Static File Demo</h1>
+            <h1 class="demo-title">🎉 Pyserv  Static File Demo</h1>
             <p>This demo shows how static files (CSS, JS) are automatically served for rich widgets.</p>
         </div>
 
@@ -148,7 +148,7 @@ async def list_static_files(request):
     import json
     from pathlib import Path
 
-    static_dir = Path("src/pydance/static")
+    static_dir = Path("src/pyserv/static")
     files = []
 
     if static_dir.exists():
@@ -197,8 +197,8 @@ async def test_static(request):
 
 
 if __name__ == '__main__':
-    print("🚀 Starting Pydance server with static file serving...")
-    print("\n📁 Static files will be served from: src/pydance/static/")
+    print("🚀 Starting Pyserv  server with static file serving...")
+    print("\n📁 Static files will be served from: src/pyserv/static/")
     print("🌐 Available URLs:")
     print("  - http://localhost:8000/ (Main demo)")
     print("  - http://localhost:8000/test-static (Static file test)")
@@ -209,3 +209,7 @@ if __name__ == '__main__':
 
     # Run the server
     app.run(host='0.0.0.0', port=8000, debug=True)
+
+
+
+

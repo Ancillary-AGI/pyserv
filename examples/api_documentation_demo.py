@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PyDance API Documentation Demo
+Pyserv  API Documentation Demo
 Demonstrates FastAPI-style API documentation with ReDoc and Swagger UI.
 """
 
@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from pydance.docs import (
+from pyserv.docs import (
     get_api_docs, api_endpoint, APIEndpoint, APISchema
 )
 
@@ -108,12 +108,12 @@ def health_check():
 
 def demo_api_documentation():
     """Demonstrate API documentation generation"""
-    print("🚀 PyDance API Documentation Demo")
+    print("🚀 Pyserv  API Documentation Demo")
     print("=" * 50)
 
     # Get the API documentation instance
     docs = get_api_docs(
-        title="PyDance Quantum-Secure API",
+        title="Pyserv  Quantum-Secure API",
         version="2.0.0",
         description="A quantum-resistant web framework API with advanced security features"
     )
@@ -207,7 +207,7 @@ def demo_api_documentation():
     print("   📖 Open api_docs_swagger.html in your browser for Swagger UI")
     print("   📄 Check openapi_spec.json for the raw OpenAPI specification")
 
-    print("\n7. Integration with PyDance:")
+    print("\n7. Integration with Pyserv :")
     print("   • Add @api_endpoint decorators to your route handlers")
     print("   • Use get_api_docs() to access the global documentation instance")
     print("   • Generate documentation automatically or on-demand")
@@ -297,3 +297,7 @@ if __name__ == "__main__":
         print(f"❌ Demo failed: {e}")
         import traceback
         traceback.print_exc()
+
+
+
+

@@ -40,7 +40,7 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest --cov=pydance --cov-report=xml --cov-report=term-missing
+        pytest --cov=pyserv  --cov-report=xml --cov-report=term-missing
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -75,13 +75,13 @@ jobs:
 
     - name: Run linting
       run: |
-        flake8 src/pydance tests
-        black --check --diff src/pydance tests
-        isort --check-only --diff src/pydance tests
+        flake8 src/pyserv  tests
+        black --check --diff src/pyserv  tests
+        isort --check-only --diff src/pyserv  tests
 
     - name: Run type checking
       run: |
-        mypy src/pydance
+        mypy src/pyserv 
 
     - name: Run pre-commit hooks
       run: |
@@ -112,7 +112,7 @@ jobs:
 
     - name: Run security checks
       run: |
-        bandit -r src/pydance -c .bandit.yml || true
+        bandit -r src/pyserv  -c .bandit.yml || true
         safety check || true
 
   build:
@@ -148,7 +148,7 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: pydance-dist
+        name: pyserv -dist
         path: dist/
         retention-days: 30
 
@@ -183,7 +183,7 @@ jobs:
     - name: Upload documentation
       uses: actions/upload-artifact@v3
       with:
-        name: pydance-docs
+        name: pyserv -docs
         path: docs/_build/html/
         retention-days: 30
 
@@ -201,27 +201,27 @@ jobs:
         context: .
         file: ./Dockerfile
         target: production
-        tags: pydance:test
+        tags: pyserv :test
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
     - name: Test Docker image
       run: |
         # Start the container
-        docker run -d --name pydance-test -p 8000:8000 pydance:test
+        docker run -d --name pyserv -test -p 8000:8000 pyserv :test
 
         # Wait for the application to start
         sleep 10
 
         # Test health endpoint
-        curl -f http://localhost:8000/health || (docker logs pydance-test && exit 1)
+        curl -f http://localhost:8000/health || (docker logs pyserv -test && exit 1)
 
         # Test main endpoint
-        curl -f http://localhost:8000/ || (docker logs pydance-test && exit 1)
+        curl -f http://localhost:8000/ || (docker logs pyserv -test && exit 1)
 
         # Clean up
-        docker stop pydance-test
-        docker rm pydance-test
+        docker stop pyserv -test
+        docker rm pyserv -test
 
   performance:
     runs-on: ubuntu-latest
@@ -288,12 +288,15 @@ jobs:
         body: |
           ## Changes
 
-          See [CHANGELOG.md](https://github.com/ancillary-ai/pydance/blob/main/CHANGELOG.md) for details.
+          See [CHANGELOG.md](https://github.com/ancillary-ai/pyserv /blob/main/CHANGELOG.md) for details.
 
           ## Installation
 
           ```bash
-          pip install pydance
+          pip install pyserv 
           ```
         draft: false
         prerelease: false
+
+
+

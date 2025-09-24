@@ -5,9 +5,9 @@ from typing import AsyncGenerator
 
 import pytest
 
-from pydance.core.database_pool import OptimizedDatabaseConnection
-from pydance.database.config import DatabaseConfig
-from pydance.models.base import BaseModel
+from pyserv.database.database_pool import OptimizedDatabaseConnection
+from pyserv.database.config import DatabaseConfig
+from pyserv.models.base import BaseModel
 
 
 @pytest.fixture
@@ -33,3 +33,7 @@ def test_model():
             collection = "test_models"
 
     return TestModel
+
+
+
+

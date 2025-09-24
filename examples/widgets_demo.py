@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PyDance Enhanced Widgets Demo
+Pyserv  Enhanced Widgets Demo
 
 This script demonstrates the new advanced widgets including:
 - Theme System (AUTO theme that follows current application theme)
@@ -11,7 +11,7 @@ This script demonstrates the new advanced widgets including:
 """
 
 from datetime import datetime, date, time
-from pydance.widgets import (
+from pyserv.widgets import (
     # Date and Time Widgets
     RichDateTime, RichDate, RichTime,
     # File Management Widgets
@@ -337,7 +337,7 @@ def demo_enhanced_widgets():
 
 def main():
     """Run all widget demos"""
-    print("🎉 PyDance Enhanced Widgets Demo")
+    print("🎉 Pyserv  Enhanced Widgets Demo")
     print("=" * 50)
     print()
 
@@ -372,3 +372,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+

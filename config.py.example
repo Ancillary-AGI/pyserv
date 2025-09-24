@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Pydance Configuration Example
+Pyserv  Configuration Example
 Copy this file to config.py and modify as needed
 """
-from pydance import AppConfig
+from pyserv import AppConfig
 
 # Application configuration
 config = AppConfig(
@@ -33,3 +33,7 @@ ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.pdf']
 # Logging
 LOG_LEVEL = "DEBUG" if config.debug else "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+
+
+

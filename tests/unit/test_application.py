@@ -1,17 +1,18 @@
 """
-Unit tests for Pydance Application
+Unit tests for Pyserv  Application
 """
+from typing import Dict, Any, List
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pydance import Application, AppConfig
-from pydance.core.exceptions import HTTPException
+from pyserv import Application, AppConfig
+from pyserv.exceptions import HTTPException
 
 
 class TestApplication:
     """Test Application class"""
 
-    def test_application_init(self, config):
+    def test_application_init(self, config: AppConfig) -> None:
         """Test application initialization"""
         app = Application(config)
         assert app.config == config
@@ -21,16 +22,16 @@ class TestApplication:
         assert app.template_engine is None
         assert app.db_connection is None
 
-    def test_application_init_default_config(self):
+    def test_application_init_default_config(self) -> None:
         """Test application with default config"""
         app = Application()
         assert isinstance(app.config, AppConfig)
 
     @pytest.mark.asyncio
-    async def test_startup_shutdown(self, app):
+    async def test_startup_shutdown(self, app: Application) -> None:
         """Test application startup and shutdown"""
         # Mock database connection
-        with patch('pydance.core.database.DatabaseConnection') as mock_db:
+        with patch('pyserv .core.database.DatabaseConnection') as mock_db:
             mock_instance = AsyncMock()
             mock_db.get_instance.return_value = mock_instance
 
@@ -40,10 +41,10 @@ class TestApplication:
             mock_instance.connect.assert_called_once()
             mock_instance.disconnect.assert_called_once()
 
-    def test_route_decorator(self, app):
+    def test_route_decorator(self, app: Application) -> None:
         """Test route decorator"""
         @app.route('/test', methods=['GET', 'POST'])
-        async def test_handler(request):
+        async def test_handler(request) -> Dict[str, str]:
             return {'message': 'test'}
 
         # Check that route was added
@@ -52,10 +53,10 @@ class TestApplication:
         assert route.path == '/test'
         assert route.methods == ['GET', 'POST']
 
-    def test_websocket_route_decorator(self, app):
+    def test_websocket_route_decorator(self, app: Application) -> None:
         """Test WebSocket route decorator"""
         @app.websocket_route('/ws')
-        async def ws_handler(websocket):
+        async def ws_handler(websocket) -> None:
             await websocket.accept()
 
         # Check that WebSocket route was added
@@ -63,26 +64,26 @@ class TestApplication:
         route = app.router.websocket_routes[0]
         assert route.path == '/ws'
 
-    def test_middleware_addition(self, app):
+    def test_middleware_addition(self, app: Application) -> None:
         """Test middleware addition"""
         mock_middleware = MagicMock()
         app.add_middleware(mock_middleware)
         assert len(app.middleware_manager.middleware) == 2  # + default middleware
 
-    def test_exception_handler(self, app):
+    def test_exception_handler(self, app: Application) -> None:
         """Test exception handler registration"""
         @app.exception_handler(ValueError)
-        async def handle_value_error(exc):
+        async def handle_value_error(exc: ValueError) -> Dict[str, str]:
             return {'error': 'value error'}
 
         assert ValueError in app._exception_handlers
         assert app._exception_handlers[ValueError] == handle_value_error
 
     @pytest.mark.asyncio
-    async def test_handle_http_request(self, app):
+    async def test_handle_http_request(self, app: Application) -> None:
         """Test HTTP request handling"""
         # Mock request and response
-        mock_scope = {
+        mock_scope: Dict[str, Any] = {
             'type': 'http',
             'method': 'GET',
             'path': '/test',
@@ -93,11 +94,11 @@ class TestApplication:
 
         # Add a test route
         @app.route('/test')
-        async def test_handler(request):
+        async def test_handler(request) -> Dict[str, str]:
             return {'message': 'test'}
 
         # Mock the response
-        with patch('pydance.core.response.Response') as mock_response_class:
+        with patch('pyserv .core.response.Response') as mock_response_class:
             mock_response = MagicMock()
             mock_response_class.return_value = mock_response
             mock_response.__call__ = AsyncMock()
@@ -107,9 +108,9 @@ class TestApplication:
             mock_response.__call__.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_handle_websocket_request(self, app):
+    async def test_handle_websocket_request(self, app: Application) -> None:
         """Test WebSocket request handling"""
-        mock_scope = {
+        mock_scope: Dict[str, Any] = {
             'type': 'websocket',
             'path': '/ws',
             'headers': []
@@ -119,11 +120,11 @@ class TestApplication:
 
         # Add a test WebSocket route
         @app.websocket_route('/ws')
-        async def ws_handler(websocket):
+        async def ws_handler(websocket) -> None:
             await websocket.accept()
 
         # Mock WebSocket
-        with patch('pydance.core.websocket.WebSocket') as mock_ws_class:
+        with patch('pyserv .core.websocket.WebSocket') as mock_ws_class:
             mock_ws = AsyncMock()
             mock_ws_class.return_value = mock_ws
 
@@ -131,7 +132,7 @@ class TestApplication:
 
             mock_ws_class.assert_called_once()
 
-    def test_debug_property(self, config):
+    def test_debug_property(self, config: AppConfig) -> None:
         """Test debug property"""
         config.debug = True
         app = Application(config)
@@ -141,7 +142,7 @@ class TestApplication:
         app = Application(config)
         assert app.debug is False
 
-    def test_mount_subapp(self, app):
+    def test_mount_subapp(self, app: Application) -> None:
         """Test mounting sub-application"""
         subapp = Application()
         app.mount('/api', subapp)
