@@ -99,11 +99,11 @@ from pyserv.iot import (
 )
 
 # Performance optimization imports
-from pyserv.database.database_pool import get_pooled_connection, PoolConfig, OptimizedDatabaseConnection
-from pyserv.caching.distributed_cache import get_distributed_cache, CacheConfig
+from pyserv.database.database_pool import get_pooled_connection, PoolConfig, DatabaseConnection
+from pyserv.caching.distributed_cache import get_distributed_cache
 from pyserv.microservices.grpc_service import GRPCService, GRPCConfig
 from pyserv.performance.performance_optimizer import init_performance_monitoring, get_performance_monitor
-from pyserv.performance.profiling import get_profiler, get_load_tester, profile_function, benchmark
+from pyserv.performance.profiling import get_profiler, get_load_tester
 from pyserv.performance.performance_anti_patterns import get_anti_pattern_monitor
 
 # Utility imports - only import what exists
@@ -185,7 +185,7 @@ __all__ = [
     'ProtocolGateway', 'ProtocolGatewayConfig',
 
     # Performance optimizations
-    'get_pooled_connection', 'PoolConfig', 'OptimizedDatabaseConnection',
+    'get_pooled_connection', 'PoolConfig', 'DatabaseConnection',
     'get_distributed_cache', 'CacheConfig',
     'GRPCService', 'GRPCConfig',
     'init_performance_monitoring', 'get_performance_monitor',

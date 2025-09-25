@@ -373,6 +373,22 @@ class MongoDBBackend:
 
         return mongo_filters
 
+    async def add_field(self, model_name: str, field_name: str, field: Field) -> None:
+        """Add a field to documents for MongoDB (no-op - MongoDB is schemaless)"""
+        # MongoDB is schemaless, so adding a field is a no-op
+        # Fields are added dynamically when documents are inserted
+        pass
 
+    async def remove_field(self, model_name: str, field_name: str) -> None:
+        """Remove a field from all documents for MongoDB"""
+        collection = self.db[model_name.lower() + 's']  # Follow convention
+        # Use $unset to remove the field from all documents
+        await collection.update_many({}, {"$unset": {field_name: ""}})
 
-
+    async def alter_field(self, model_name: str, field_name: str, field: Field) -> None:
+        """Alter a field in documents for MongoDB (limited support)"""
+        # MongoDB has limited support for field type changes
+        # This is a simplified implementation
+        collection = self.db[model_name.lower() + 's']  # Follow convention
+        # For now, we'll just log that this operation is not fully supported
+        print(f"Warning: Field modification not fully supported in MongoDB for {model_name}.{field_name}")

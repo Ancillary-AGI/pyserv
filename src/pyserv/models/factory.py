@@ -5,7 +5,10 @@ Model factory for creating model classes dynamically.
 from typing import Dict, List, Optional, Any, Type, TypeVar
 from pyserv.utils.types import Field, Relationship, LazyLoad
 
-T = TypeVar('T', bound='BaseModel')
+# Import here to avoid circular imports but make it available for TypeVar
+from pyserv.models.base import BaseModel
+
+T = TypeVar('T', bound=BaseModel)
 
 
 class ModelFactory:
@@ -86,7 +89,3 @@ class ModelFactory:
             attrs[rel_name] = LazyLoad(rel_name)
 
         return type(name, (base_model,), attrs)
-
-
-
-

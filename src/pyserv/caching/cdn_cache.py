@@ -9,6 +9,8 @@ import hashlib
 from typing import Optional, Any, Dict
 from datetime import timedelta
 
+from pyserv.caching.cache_manager import CacheConfig
+
 class CDNCache:
     """
     CDN-based global cache implementation.

@@ -17,7 +17,7 @@ import heapq
 import logging
 
 from pyserv.caching import get_cache_manager
-from pyserv.database import DatabaseConnection
+from pyserv.database import AbstractDatabaseConnection
 
 
 class Job:
@@ -221,7 +221,7 @@ class DatabaseQueueBackend(QueueBackend):
     """Database-based queue backend"""
 
     def __init__(self, db_connection=None):
-        self.db = db_connection or DatabaseConnection.get_instance()
+        self.db = db_connection or AbstractDatabaseConnection.get_instance()
         self.fallback = MemoryQueueBackend()
 
     def enqueue(self, job: Job) -> bool:

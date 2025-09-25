@@ -11,9 +11,7 @@ import time
 import re
 import importlib.util
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Callable, Tuple
-from urllib.parse import urlparse
-from datetime import datetime
+from typing import List, Any, Callable
 
 
 class CommandRegistry:
@@ -268,6 +266,38 @@ class PyservCLI:
         workers_parser.add_argument('--workers', type=int, default=1, help='Number of workers')
         workers_parser.add_argument('--concurrency', type=int, default=4, help='Max concurrent jobs per worker')
 
+    def _add_maintenance_commands(self, subparsers):
+        """Add maintenance mode commands"""
+        maintenance_parser = subparsers.add_parser('maintenance', help='Manage maintenance mode')
+        maintenance_subparsers = maintenance_parser.add_subparsers(dest='maintenance_action', help='Maintenance actions')
+
+        # Enable maintenance
+        enable_parser = maintenance_subparsers.add_parser('enable', help='Enable maintenance mode')
+        enable_parser.add_argument('--message', help='Maintenance message')
+        enable_parser.add_argument('--title', default='Maintenance Mode', help='Maintenance page title')
+        enable_parser.add_argument('--retry-after', type=int, default=3600, help='Retry after seconds')
+        enable_parser.add_argument('--allowed-ips', nargs='*', help='Allowed IP addresses')
+        enable_parser.add_argument('--allowed-paths', nargs='*', help='Allowed URL paths')
+
+        # Disable maintenance
+        maintenance_subparsers.add_parser('disable', help='Disable maintenance mode')
+
+        # Schedule maintenance
+        schedule_parser = maintenance_subparsers.add_parser('schedule', help='Schedule maintenance')
+        schedule_parser.add_argument('start_time', help='Start time (YYYY-MM-DD HH:MM:SS)')
+        schedule_parser.add_argument('end_time', help='End time (YYYY-MM-DD HH:MM:SS)')
+        schedule_parser.add_argument('--message', help='Maintenance message')
+        schedule_parser.add_argument('--title', default='Scheduled Maintenance', help='Maintenance page title')
+        schedule_parser.add_argument('--allowed-ips', nargs='*', help='Allowed IP addresses')
+        schedule_parser.add_argument('--allowed-paths', nargs='*', help='Allowed URL paths')
+
+        # Status
+        maintenance_subparsers.add_parser('status', help='Show maintenance status')
+
+        # History
+        history_parser = maintenance_subparsers.add_parser('history', help='Show maintenance history')
+        history_parser.add_argument('--limit', type=int, default=10, help='Number of records to show')
+
     def _register_commands(self):
         """Register all CLI commands"""
         # Server commands
@@ -309,6 +339,9 @@ class PyservCLI:
         self.registry.register('schedule', None, self.cmd_schedule)
         self.registry.register('jobs', None, self.cmd_jobs)
         self.registry.register('workers', None, self.cmd_workers)
+
+        # Maintenance commands
+        self.registry.register('maintenance', None, self.cmd_maintenance)
 
     # Validation methods
     def _validate_server_args(self, args) -> List[str]:
@@ -551,7 +584,13 @@ class PyservCLI:
 
     def cmd_dbshell(self, args):
         """Start database shell"""
-        print("Database shell not implemented yet")
+        import asyncio
+        from .shell import dbshell
+
+        async def run_dbshell():
+            await dbshell()
+
+        asyncio.run(run_dbshell())
 
     def cmd_migrate(self, args):
         """Run database migrations"""
@@ -644,11 +683,122 @@ class PyservCLI:
 
     def cmd_makemigrations(self, args):
         """Create database migrations"""
-        print("Create migrations command - implementation depends on database framework")
+        import asyncio
+        from ..migrations import make_migrations
+        from ..models.base import BaseModel
+        import importlib
+        import inspect
+
+        async def create_migrations():
+            try:
+                print(f"🔍 Creating migrations for app: {args.app}")
+
+                # Discover models from the specified app
+                models = []
+
+                if args.app:
+                    try:
+                        # Import the app module
+                        app_module = importlib.import_module(args.app)
+
+                        # Find all model classes in the module
+                        for name, obj in inspect.getmembers(app_module):
+                            if (inspect.isclass(obj) and
+                                issubclass(obj, BaseModel) and
+                                obj != BaseModel):
+                                models.append(obj)
+                                print(f"  📝 Found model: {name}")
+
+                    except ImportError as e:
+                        print(f"❌ Could not import app '{args.app}': {e}")
+                        return
+                else:
+                    # Auto-discover models from common locations
+                    search_paths = ['app.models', 'models', 'src.models']
+
+                    for path in search_paths:
+                        try:
+                            module = importlib.import_module(path)
+
+                            for name, obj in inspect.getmembers(module):
+                                if (inspect.isclass(obj) and
+                                    issubclass(obj, BaseModel) and
+                                    obj != BaseModel):
+                                    models.append(obj)
+                                    print(f"  📝 Found model: {name}")
+
+                        except ImportError:
+                            continue  # Module not found, try next path
+
+                if not models:
+                    print("❌ No models found to create migrations for")
+                    print("💡 Make sure your models inherit from BaseModel and are importable")
+                    return
+
+                print(f"📊 Found {len(models)} model(s)")
+
+                # Generate migration name
+                migration_name = args.name if args.name != 'auto' else None
+
+                # Create migrations
+                migration = await make_migrations(models, migration_name)
+
+                print("✅ Migration created successfully!")
+                print(f"   ID: {migration.id}")
+                print(f"   Name: {migration.name}")
+                print(f"   Description: {migration.description}")
+                print(f"   Operations: {len(migration.operations)}")
+
+                if migration.migration_file:
+                    print(f"   File: {migration.migration_file}")
+
+                print("\n🎯 Next step: Run 'python manage.py migrate' to apply the migration")
+
+            except Exception as e:
+                print(f"❌ Failed to create migrations: {e}")
+                import traceback
+                traceback.print_exc()
+
+        asyncio.run(create_migrations())
 
     def cmd_showmigrations(self, args):
         """Show migration status"""
-        print("Show migrations command - implementation depends on database framework")
+        import asyncio
+        from ..migrations import show_migrations
+
+        async def show_migration_status():
+            try:
+                print("📋 Migration Status")
+                print("=" * 60)
+
+                status_text = await show_migrations()
+
+                if not status_text or "No migrations found" in status_text:
+                    print("No migrations found")
+                    print("\n💡 To create migrations, run:")
+                    print("  python manage.py makemigrations")
+                    return
+
+                print(status_text)
+
+                # Show summary
+                from ..migrations import get_migration_status
+                summary = await get_migration_status()
+
+                print("\n📊 Summary:")
+                print(f"  Total migrations: {summary['total']}")
+                print(f"  Applied: {summary['applied']}")
+                print(f"  Pending: {summary['pending']}")
+
+                if summary['last_applied']:
+                    print(f"  Last applied: {summary['last_applied']}")
+
+            except Exception as e:
+                print(f"❌ Failed to show migration status: {e}")
+                import traceback
+                traceback.print_exc()
+
+        asyncio.run(show_migration_status())
 
     def cmd_startproject(self, args):
         """Create a new Pyserv project"""
@@ -1524,6 +1674,133 @@ urlpatterns = []
         elif args.action == 'status':
             print(f"Worker status for queue '{args.queue}':")
         print("Worker management implementation depends on queue framework")
+
+    def cmd_maintenance(self, args):
+        """Manage maintenance mode"""
+        import asyncio
+        from ..middleware.maintenance import (
+            enable_maintenance, disable_maintenance, schedule_maintenance,
+            get_maintenance_status, get_maintenance_history
+        )
+        from datetime import datetime
+
+        if args.maintenance_action == 'enable':
+            print("Enabling maintenance mode...")
+
+            # Parse allowed IPs
+            allowed_ips = args.allowed_ips if hasattr(args, 'allowed_ips') and args.allowed_ips else None
+
+            # Parse allowed paths
+            allowed_paths = args.allowed_paths if hasattr(args, 'allowed_paths') and args.allowed_paths else None
+
+            # Enable maintenance
+            record = enable_maintenance(
+                message=args.message,
+                title=args.title,
+                retry_after=args.retry_after,
+                allowed_ips=allowed_ips,
+                allowed_paths=allowed_paths,
+                performed_by="cli"
+            )
+
+            print(f"✅ Maintenance mode enabled")
+            print(f"   Message: {record.message}")
+            print(f"   Started: {record.start_time}")
+            print(f"   Allowed IPs: {', '.join(record.allowed_ips)}")
+            if allowed_paths:
+                print(f"   Allowed paths: {', '.join(allowed_paths)}")
+
+        elif args.maintenance_action == 'disable':
+            print("Disabling maintenance mode...")
+
+            record = disable_maintenance(performed_by="cli")
+
+            if record:
+                print(f"✅ Maintenance mode disabled")
+                print(f"   Was active from: {record.start_time}")
+                print(f"   Ended: {record.end_time}")
+            else:
+                print("ℹ️  Maintenance mode was not active")
+
+        elif args.maintenance_action == 'schedule':
+            print("Scheduling maintenance...")
+
+            try:
+                # Parse datetime strings
+                start_time = datetime.strptime(args.start_time, '%Y-%m-%d %H:%M:%S')
+                end_time = datetime.strptime(args.end_time, '%Y-%m-%d %H:%M:%S')
+
+                if start_time >= end_time:
+                    print("❌ Start time must be before end time")
+                    return
+
+                # Parse allowed IPs and paths
+                allowed_ips = args.allowed_ips if hasattr(args, 'allowed_ips') and args.allowed_ips else None
+                allowed_paths = args.allowed_paths if hasattr(args, 'allowed_paths') and args.allowed_paths else None
+
+                # Schedule maintenance
+                record = schedule_maintenance(
+                    start_time=start_time,
+                    end_time=end_time,
+                    message=args.message,
+                    title=args.title,
+                    allowed_ips=allowed_ips,
+                    allowed_paths=allowed_paths,
+                    performed_by="cli"
+                )
+
+                print(f"✅ Maintenance scheduled")
+                print(f"   Start: {record.start_time}")
+                print(f"   End: {record.end_time}")
+                print(f"   Message: {record.message}")
+
+            except ValueError as e:
+                print(f"❌ Invalid datetime format. Use YYYY-MM-DD HH:MM:SS: {e}")
+            except Exception as e:
+                print(f"❌ Failed to schedule maintenance: {e}")
+
+        elif args.maintenance_action == 'status':
+            print("Maintenance Status:")
+            print("=" * 50)
+
+            status = get_maintenance_status()
+
+            print(f"Enabled: {status['enabled']}")
+            print(f"Status: {status['status']}")
+            print(f"Active: {status['is_active']}")
+            print(f"Message: {status['message']}")
+            print(f"Title: {status['title']}")
+            print(f"Retry After: {status['retry_after']} seconds")
+
+            if status['allowed_ips']:
+                print(f"Allowed IPs: {', '.join(status['allowed_ips'])}")
+
+            if status['allowed_paths']:
+                print(f"Allowed paths: {', '.join(status['allowed_paths'])}")
+
+            if status['scheduled_start']:
+                print(f"Scheduled start: {status['scheduled_start']}")
+
+            if status['scheduled_end']:
+                print(f"Scheduled end: {status['scheduled_end']}")
+
+        elif args.maintenance_action == 'history':
+            print("Maintenance History:")
+            print("=" * 50)
+
+            history = get_maintenance_history(limit=args.limit)
+
+            if not history:
+                print("No maintenance history found")
+                return
+
+            for record in history:
+                status_icon = "🔧" if record['end_time'] else "⏳"
+                print(f"{status_icon} {record['start_time']} - {record['end_time'] or 'Ongoing'}")
+                print(f"   Reason: {record['reason']}")
+                print(f"   Message: {record['message']}")
+                print(f"   By: {record['performed_by']}")
+                print()
 
     def _get_pid_file(self):
         """Get PID file path"""

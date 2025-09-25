@@ -8,12 +8,10 @@ import hashlib
 import hmac
 import secrets
 from typing import Dict, List, Any, Optional, Union, Callable, Type, Pattern
-from datetime import datetime, date
-from decimal import Decimal, InvalidOperation
-from functools import wraps
-from urllib.parse import unquote
+from datetime import datetime
 
-from pyserv.utils.types import ValidationError, FieldValidationError, PasswordField
+
+from pyserv.exceptions import ValidationError, FieldValidationError
 
 
 class Validator:
@@ -162,7 +160,7 @@ class DateValidator(Validator):
         self.date_format = date_format
 
     def validate(self, value: Any, field_name: str = None) -> Any:
-        if isinstance(value, (date, datetime)):
+        if isinstance(value, (datetime.date, datetime)):
             return value
 
         if not isinstance(value, str):
@@ -488,7 +486,3 @@ class FileField(Field):
     def __init__(self, allowed_extensions: List[str] = None,
                  max_size: int = None, **kwargs):
         super().__init__(validators=[FileValidator(allowed_extensions, max_size)], **kwargs)
-
-
-
-

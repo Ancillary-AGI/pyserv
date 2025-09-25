@@ -4,10 +4,8 @@ Advanced cache manager with multiple cache levels and strategies.
 
 import asyncio
 import hashlib
-import json
 import logging
-import time
-from typing import Dict, List, Optional, Any, Callable, Tuple, Union
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -179,3 +177,183 @@ class CacheManager:
 
 # Global cache manager
 cache_manager = CacheManager(CacheConfig())
+
+
+class CacheMetricsCollector:
+    """Collects cache metrics"""
+
+    def __init__(self):
+        self.total_hits = 0
+        self.total_misses = 0
+        self.level_hits = {}
+        self.level_misses = {}
+
+    def record_hit(self, level: CacheLevel):
+        """Record a cache hit"""
+        self.total_hits += 1
+        self.level_hits[level] = self.level_hits.get(level, 0) + 1
+
+    def record_miss(self):
+        """Record a cache miss"""
+        self.total_misses += 1
+
+    @property
+    def hit_rate(self) -> float:
+        """Calculate hit rate"""
+        total = self.total_hits + self.total_misses
+        return self.total_hits / total if total > 0 else 0.0
+
+    def get_level_metrics(self) -> Dict[str, Any]:
+        """Get metrics per level"""
+        return {
+            level.value: {
+                "hits": self.level_hits.get(level, 0),
+                "misses": self.level_misses.get(level, 0)
+            }
+            for level in CacheLevel
+        }
+
+    def get_memory_usage(self) -> Dict[str, int]:
+        """Get memory usage (placeholder)"""
+        return {"used": 0, "available": 0}
+
+
+class MemoryCache:
+    """In-memory cache implementation"""
+
+    def __init__(self, config: CacheConfig):
+        self.config = config
+        self._data = {}
+        self._access_order = []
+
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value from memory cache"""
+        if key in self._data:
+            entry = self._data[key]
+            if entry.expires_at and datetime.now() > entry.expires_at:
+                del self._data[key]
+                return None
+            entry.accessed_at = datetime.now()
+            entry.access_count += 1
+            return entry.value
+        return None
+
+    async def set(self, key: str, value: Any, ttl_seconds: int = None) -> bool:
+        """Set value in memory cache"""
+        expires_at = None
+        if ttl_seconds:
+            expires_at = datetime.now() + timedelta(seconds=ttl_seconds)
+
+        entry = CacheEntry(
+            key=key,
+            value=value,
+            created_at=datetime.now(),
+            accessed_at=datetime.now(),
+            expires_at=expires_at
+        )
+        self._data[key] = entry
+        return True
+
+    async def delete(self, key: str) -> bool:
+        """Delete value from memory cache"""
+        if key in self._data:
+            del self._data[key]
+            return True
+        return False
+
+    async def clear(self):
+        """Clear memory cache"""
+        self._data.clear()
+        self._access_order.clear()
+
+    async def invalidate_pattern(self, pattern: str):
+        """Invalidate keys matching pattern"""
+        keys_to_delete = [key for key in self._data.keys() if pattern in key]
+        for key in keys_to_delete:
+            del self._data[key]
+
+
+class RedisCache:
+    """Redis cache implementation"""
+
+    def __init__(self, config: CacheConfig):
+        self.config = config
+        self._redis = None
+
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value from Redis cache"""
+        if not self._redis:
+            return None
+        try:
+            value = await self._redis.get(key)
+            return value
+        except Exception:
+            return None
+
+    async def set(self, key: str, value: Any, ttl_seconds: int = None) -> bool:
+        """Set value in Redis cache"""
+        if not self._redis:
+            return False
+        try:
+            if ttl_seconds:
+                await self._redis.setex(key, ttl_seconds, value)
+            else:
+                await self._redis.set(key, value)
+            return True
+        except Exception:
+            return False
+
+    async def delete(self, key: str) -> bool:
+        """Delete value from Redis cache"""
+        if not self._redis:
+            return False
+        try:
+            await self._redis.delete(key)
+            return True
+        except Exception:
+            return False
+
+    async def clear(self):
+        """Clear Redis cache"""
+        if self._redis:
+            await self._redis.flushdb()
+
+    async def invalidate_pattern(self, pattern: str):
+        """Invalidate keys matching pattern"""
+        if not self._redis:
+            return
+        try:
+            keys = await self._redis.keys(pattern)
+            if keys:
+                await self._redis.delete(*keys)
+        except Exception:
+            pass
+
+
+class CDNCache:
+    """CDN cache implementation"""
+
+    def __init__(self, config: CacheConfig):
+        self.config = config
+
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value from CDN cache (placeholder)"""
+        # This would integrate with a CDN service
+        return None
+
+    async def set(self, key: str, value: Any, ttl_seconds: int = None) -> bool:
+        """Set value in CDN cache (placeholder)"""
+        # This would integrate with a CDN service
+        return True
+
+    async def delete(self, key: str) -> bool:
+        """Delete value from CDN cache (placeholder)"""
+        return True
+
+    async def clear(self):
+        """Clear CDN cache (placeholder)"""
+        pass
+
+    async def invalidate_pattern(self, pattern: str):
+        """Invalidate keys matching pattern (placeholder)"""
+        pass

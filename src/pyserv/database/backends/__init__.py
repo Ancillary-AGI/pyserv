@@ -1,5 +1,5 @@
 # server_framework/orm/backends/__init__.py
-from typing import Protocol, Any, Dict, List, Optional, AsyncGenerator, Type
+from typing import Protocol, Any, Dict, List, Optional, AsyncGenerator, Type, Tuple
 from abc import ABC, abstractmethod
 from pyserv.database.config import DatabaseConfig
 
@@ -134,6 +134,21 @@ class DatabaseBackend(Protocol):
         pass
 
     @abstractmethod
+    async def add_field(self, model_name: str, field_name: str, field: Any) -> None:
+        """Add a field to an existing model/table"""
+        pass
+
+    @abstractmethod
+    async def remove_field(self, model_name: str, field_name: str) -> None:
+        """Remove a field from an existing model/table"""
+        pass
+
+    @abstractmethod
+    async def alter_field(self, model_name: str, field_name: str, field: Any) -> None:
+        """Alter an existing field in a model/table"""
+        pass
+
+    @abstractmethod
     def get_type_mappings(self) -> Dict[Any, str]:
         """Get database-specific type mappings for fields"""
         pass
@@ -171,7 +186,3 @@ def get_backend(config: DatabaseConfig) -> DatabaseBackend:
 
 
 __all__ = ['DatabaseBackend', 'SQLiteBackend', 'PostgresBackend', 'MySQLBackend', 'MongoDBBackend', 'get_backend']
-
-
-
-

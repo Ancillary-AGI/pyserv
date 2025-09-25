@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Union, Dict, List, Type, get_origin, get_args, Awaitable
+from typing import Any, Callable, Optional, Union, Dict, List, Type, get_origin, Awaitable
 from enum import Enum
 from pyserv.database.config import DatabaseConfig
 from pyserv.database.backends import get_backend
@@ -511,7 +511,3 @@ def get_field_from_type(python_type: Type) -> Field:
     
     origin = get_origin(python_type) or python_type
     return type_map.get(origin, Field)()
-
-
-
-

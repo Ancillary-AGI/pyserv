@@ -9,17 +9,16 @@ import secrets
 import jwt
 import time
 import re
-from typing import Dict, List, Any, Optional, Union, Callable, Type
-from datetime import datetime, timedelta
+import logging
+from typing import Dict, List, Any, Optional, Callable
+from datetime import datetime
 from functools import wraps
 from dataclasses import dataclass
 from enum import Enum
 
 from pyserv.models.user import BaseUser
 from pyserv.utils.form_validation import EmailField, CharField
-from pyserv.utils.types import ValidationError
 from pyserv.caching import get_cache_manager
-from pyserv.security import get_security_manager
 from pyserv.exceptions import HTTPException
 
 # Use BaseUser from models/user.py instead of creating a duplicate
@@ -312,11 +311,54 @@ class AuthManager:
 
     def get_user(self, user_id: int) -> Optional[User]:
         """Get user by ID using first available backend"""
+        # Validate user_id format before attempting to find user
+        if not self._validate_user_id_format(user_id):
+            return None
+
         for backend in self.backends:
             user = backend.get_user(user_id)
             if user:
                 return user
         return None
+
+    def _validate_user_id_format(self, user_id: int) -> bool:
+        """Validate user ID format to prevent pattern mismatch attacks"""
+        if user_id is None:
+            return False
+
+        # Check if user_id is a valid integer
+        if not isinstance(user_id, int):
+            try:
+                user_id = int(user_id)
+            except (ValueError, TypeError):
+                return False
+
+        # Check for negative IDs
+        if user_id < 0:
+            return False
+
+        # Check for extremely large IDs (potential overflow attack)
+        if user_id > 9223372036854775807:  # Max 64-bit signed integer
+            return False
+
+        # Check for suspicious patterns (like SQL injection attempts)
+        user_id_str = str(user_id)
+        suspicious_patterns = [
+            '--',  # SQL comment
+            '/*', '*/',  # SQL block comments
+            ';',   # SQL statement separator
+            'union', 'select', 'insert', 'update', 'delete', 'drop',  # SQL keywords
+            'script', 'javascript', 'vbscript', 'onload', 'onerror',  # XSS patterns
+            '<', '>', '&', '"', "'",  # HTML/XSS characters
+            '..',  # Path traversal
+            '%',  # URL encoding
+        ]
+
+        for pattern in suspicious_patterns:
+            if pattern.lower() in user_id_str.lower():
+                return False
+
+        return True
 
     def login(self, request, user: User) -> str:
         """Log in user and create session"""
@@ -487,9 +529,10 @@ class AuthenticationMiddleware:
         return response
 
 
-class AdvancedSecurityMiddleware:
+class AuthSecurityMiddleware:
     """
-    Advanced security middleware with comprehensive protection features.
+    Security middleware with comprehensive protection features including
+    rate limiting, authentication, authorization, and security event logging.
     """
 
     def __init__(self, config: Dict[str, Any] = None):
@@ -1021,7 +1064,7 @@ auth_manager.add_backend(ModelBackend())
 __all__ = [
     'User', 'Session', 'AuthBackend', 'ModelBackend', 'JWTBackend', 'OAuthBackend',
     'Permission', 'Role', 'AuthManager', 'AuthenticationMiddleware', 'AuthorizationMiddleware',
-    'AdvancedSecurityMiddleware', 'AuthMethod', 'SecurityLevel', 'SecurityContext',
+    'AuthSecurityMiddleware', 'AuthMethod', 'SecurityLevel', 'SecurityContext',
     'login_required', 'permission_required', 'role_required',
     'LoginForm', 'RegistrationForm', 'auth_manager'
 ]

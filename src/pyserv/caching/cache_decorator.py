@@ -8,6 +8,8 @@ import hashlib
 import inspect
 from typing import Any, Callable, Optional, Dict, Tuple
 
+from pyserv.caching.cache_manager import CacheManager
+
 def cache_result(ttl_seconds: int = 3600, key_prefix: str = "", namespace: str = "default"):
     """Decorator to cache function results."""
     def decorator(func: Callable):

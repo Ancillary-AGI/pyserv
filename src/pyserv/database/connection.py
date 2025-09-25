@@ -1,20 +1,19 @@
 """
-Database connection module for Pyserv  Framework.
+Database connection module for Pyserv Framework.
 
 This module provides the base DatabaseConnection class that handles
 database connections with support for multiple backends.
 """
 
-import asyncio
 import logging
-from typing import Any, Optional, Dict, AsyncGenerator
+from typing import Any, Dict, AsyncGenerator, Optional
 from contextlib import asynccontextmanager
 from abc import ABC, abstractmethod
 
 from pyserv.database.config import DatabaseConfig
 
 
-class DatabaseConnection(ABC):
+class AbstractDatabaseConnection(ABC):
     """
     Abstract base class for database connections.
 
@@ -23,7 +22,7 @@ class DatabaseConnection(ABC):
     singleton pattern.
     """
 
-    _instances: Dict[str, 'DatabaseConnection'] = {}
+    _instances: Dict[str, 'AbstractDatabaseConnection'] = {}
 
     def __init__(self, config: DatabaseConfig):
         self.config = config
@@ -32,7 +31,7 @@ class DatabaseConnection(ABC):
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
 
     @classmethod
-    def get_instance(cls, config: DatabaseConfig) -> 'DatabaseConnection':
+    def get_instance(cls, config: DatabaseConfig) -> 'AbstractDatabaseConnection':
         """Get or create a singleton instance for the given config."""
         key = str(config.database_url)
         if key not in cls._instances:
@@ -76,7 +75,7 @@ class DatabaseConnection(ABC):
         return self._connected
 
 
-class SQLiteConnection(DatabaseConnection):
+class SQLiteConnection(AbstractDatabaseConnection):
     """SQLite database connection."""
 
     async def connect(self) -> None:
@@ -114,7 +113,7 @@ class SQLiteConnection(DatabaseConnection):
             return cursor.rowcount
 
 
-class PostgreSQLConnection(DatabaseConnection):
+class PostgreSQLConnection(AbstractDatabaseConnection):
     """PostgreSQL database connection."""
 
     async def connect(self) -> None:
@@ -152,7 +151,7 @@ class PostgreSQLConnection(DatabaseConnection):
             return result
 
 
-class MySQLConnection(DatabaseConnection):
+class MySQLConnection(AbstractDatabaseConnection):
     """MySQL database connection."""
 
     async def connect(self) -> None:
@@ -209,7 +208,7 @@ class MySQLConnection(DatabaseConnection):
                 return cursor.rowcount
 
 
-class MongoDBConnection(DatabaseConnection):
+class MongoDBConnection(AbstractDatabaseConnection):
     """MongoDB database connection."""
 
     async def connect(self) -> None:

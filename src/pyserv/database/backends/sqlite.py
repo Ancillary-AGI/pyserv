@@ -321,6 +321,36 @@ class SQLiteBackend:
         await self.execute_query(query)
         self.connection.commit()
 
+    async def add_field(self, model_name: str, field_name: str, field: Field) -> None:
+        """Add a field to an existing model/table for SQLite"""
+        table_name = model_name.lower() + 's'  # Follow convention
+        column_definition = f"{field_name} {self.get_sql_type(field)}"
+
+        if field.primary_key:
+            column_definition += " PRIMARY KEY"
+            if field.autoincrement:
+                column_definition += " AUTOINCREMENT"
+
+        if not field.nullable:
+            column_definition += " NOT NULL"
+
+        if field.default is not None:
+            column_definition += f" DEFAULT {self._format_default(field.default)}"
+
+        query = f"ALTER TABLE {table_name} ADD COLUMN {column_definition}"
+        await self.execute_query(query)
+        self.connection.commit()
+
+    async def remove_field(self, model_name: str, field_name: str) -> None:
+        """Remove a field from an existing model/table for SQLite"""
+        table_name = model_name.lower() + 's'  # Follow convention
+        await self.drop_column(table_name, field_name)
+
+    async def alter_field(self, model_name: str, field_name: str, field: Field) -> None:
+        """Alter an existing field in a model/table for SQLite"""
+        table_name = model_name.lower() + 's'  # Follow convention
+        await self.modify_column(table_name, field_name, self.get_sql_type(field))
+
     def get_type_mappings(self) -> Dict[Any, str]:
         """Get SQLite-specific type mappings"""
         from ...utils.types import FieldType
@@ -448,7 +478,3 @@ class SQLiteBackend:
         cursor = await self.execute_query(query, tuple(params) if params else None)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
-
-
-
-

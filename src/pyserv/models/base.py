@@ -2,19 +2,14 @@
 Base model class for database operations.
 """
 
-from typing import Dict, List, Optional, Any, Union, Type, ClassVar
+from typing import Dict, Optional, Any, Union, ClassVar
 from datetime import datetime
 
-# Motor for async MongoDB operations (async version of PyMongo)
-from motor.motor_asyncio import AsyncIOMotorClient
-from motor.core import AgnosticCollection
-from bson import ObjectId
-from pymongo import ASCENDING
-
-from pyserv.database.database_pool import OptimizedDatabaseConnection
+from pyserv.database.database_pool import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.utils.types import Field, Relationship
 from pyserv.models.query import QueryBuilder
+from pyserv.exceptions import NotFound
 
 
 class ModelMeta(type):
@@ -54,6 +49,17 @@ class ModelMeta(type):
         # Set table name if not specified
         if not hasattr(new_class, '_table_name') or not new_class._table_name:
             new_class._table_name = f"{name.lower()}s"
+
+        # Create Django-style DoesNotExist exception for the model
+        class DoesNotExist(NotFound):
+            """Exception raised when the model instance does not exist"""
+            def __init__(self, message: Optional[str] = None, **kwargs):
+                if message is None:
+                    message = f"{name} does not exist"
+                super().__init__(message, error_code=f"{name.lower()}_does_not_exist", **kwargs)
+
+        # Attach the exception to the model class
+        new_class.DoesNotExist = DoesNotExist
 
         return new_class
 
@@ -158,12 +164,12 @@ class BaseModel(metaclass=ModelMeta):
     @classmethod
     async def create_table(cls):
         """Create database table for this model"""
-        db = OptimizedDatabaseConnection.get_instance(cls._db_config)
+        db = DatabaseConnection.get_instance(cls._db_config)
         await db.create_table(cls)
 
     async def save(self):
         """Save the instance to the database using backend abstraction"""
-        db = OptimizedDatabaseConnection.get_instance(self._db_config)
+        db = DatabaseConnection.get_instance(self._db_config)
 
         # Convert instance to dict for backend
         data = self.to_dict()
@@ -191,7 +197,10 @@ class BaseModel(metaclass=ModelMeta):
         if not primary_key:
             raise ValueError("Model does not have a primary key")
 
-        return await cls.query().filter(**{primary_key: id}).first()
+        instance = await cls.query().filter(**{primary_key: id}).first()
+        if instance is None:
+            raise cls.DoesNotExist()
+        return instance
 
     @classmethod
     async def create(cls, **kwargs) -> 'BaseModel':
@@ -206,7 +215,7 @@ class BaseModel(metaclass=ModelMeta):
         if not primary_key or not hasattr(self, primary_key):
             raise ValueError("Cannot delete object without primary key")
 
-        db = OptimizedDatabaseConnection.get_instance(self._db_config)
+        db = DatabaseConnection.get_instance(self._db_config)
 
         # Use backend delete method
         filters = {primary_key: getattr(self, primary_key)}
@@ -243,7 +252,3 @@ class BaseModel(metaclass=ModelMeta):
 
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.to_dict()}>"
-
-
-
-

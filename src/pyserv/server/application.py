@@ -28,16 +28,9 @@ Key Features:
 - Performance monitoring and optimization
 """
 
-import asyncio
 import inspect
-import json
-import logging
-import uuid
-from typing import Dict, List, Callable, Any, Optional, Type, Union, Awaitable, Coroutine, Set
+from typing import Dict, List, Callable, Any, Optional, Type, Awaitable
 from functools import wraps
-from contextlib import asynccontextmanager
-from datetime import datetime
-from dataclasses import dataclass, field
 
 # Core imports
 from pyserv.server.config import AppConfig
@@ -57,7 +50,7 @@ from pyserv.caching import get_cache_manager
 from pyserv.auth import get_security_manager
 
 # Database imports
-from pyserv.database import DatabaseConfig, DatabaseConnection
+from pyserv.database import DatabaseConfig, AbstractDatabaseConnection
 
 # Security middleware
 from pyserv.security.middleware import SecurityMiddleware, CSRFMiddleware
@@ -114,7 +107,7 @@ class Application:
         self.middleware_manager = MiddlewareManager()
         self.state: Dict[str, Any] = {}
         self.template_engine: Optional[TemplateEngine] = None
-        self.db_connection: Optional[DatabaseConnection] = None
+        self.db_connection: Optional[AbstractDatabaseConnection] = None
         self._startup_events: List[Callable] = []
         self._shutdown_events: List[Callable] = []
         self._exception_handlers: Dict[Type[Exception], Callable] = {}
@@ -263,7 +256,7 @@ class Application:
         # Initialize database
         if self.config.database_url:
             db_config = DatabaseConfig(self.config.database_url)
-            self.db_connection = DatabaseConnection.get_instance(db_config)
+            self.db_connection = AbstractDatabaseConnection.get_instance(db_config)
             await self.db_connection.connect()
         
         # Initialize template engine

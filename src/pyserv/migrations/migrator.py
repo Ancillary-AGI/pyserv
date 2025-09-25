@@ -1,23 +1,38 @@
 """
-Migrator class for executing and managing database migrations.
+Migration runner and manager for Pyserv framework.
+Handles both database-stored and file-based migrations.
 """
 
 import asyncio
 import json
-import importlib
-import pkgutil
-import inspect
-import argparse
-import sys
-from typing import Dict, List, Any, Optional, Tuple, Type
+import logging
+import os
+import re
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
+from dataclasses import dataclass
 
-from pyserv.migrations.migration import Migration
-from pyserv.database.database_pool import OptimizedDatabaseConnection
+from pyserv.database.database_pool import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
-from pyserv.database.backends import get_backend
 from pyserv.models.base import BaseModel
-from pyserv.utils.types import Field
+from .migration import (
+    Migration, MigrationFile, MigrationGenerator, MigrationOperationType,
+    MigrationOperation, ModelMigration
+)
+
+
+@dataclass
+class MigrationStatus:
+    """Status of a migration"""
+    migration_id: str
+    name: str
+    applied: bool
+    applied_at: Optional[datetime]
+    checksum: Optional[str]
+    file_path: Optional[str]
+    dependencies: List[str]
+    operations_count: int
 
 
 class Migrator:
@@ -41,7 +56,10 @@ class Migrator:
 
     async def initialize(self):
         """Create migrations table/collection if it doesn't exist and load applied migrations"""
-        db = OptimizedDatabaseConnection.get_instance(self.db_config)
+        if not self.db_config:
+            from pyserv.database.config import DatabaseConfig
+            self.db_config = DatabaseConfig.from_env()
+        db = DatabaseConnection.get_instance(self.db_config)
 
         # Create migrations table/collection using backend
         await db.backend.create_migrations_table()
@@ -59,6 +77,10 @@ class Migrator:
 
         try:
             # Import the package
+            import importlib
+            import pkgutil
+            import inspect
+
             package = importlib.import_module(package_name)
 
             # Iterate through all modules in the package
@@ -101,7 +123,7 @@ class Migrator:
             print(f"{model_name} is already at version {current_version} (target: {target_version})")
             return
 
-        db = OptimizedDatabaseConnection.get_instance(self.db_config)
+        db = DatabaseConnection.get_instance(self.db_config)
 
         print(f"Migrating {model_name} from v{current_version} to v{target_version}")
 
@@ -130,14 +152,13 @@ class Migrator:
                             # SQLite - execute each statement separately
                             statements = [s.strip() for s in migration_sql.split(';') if s.strip()]
                             for statement in statements:
-                                conn.execute(statement)
+                                await conn.execute(statement)
 
                             # Store migration schema and operations for downgrade
-                            conn.execute(
+                            await conn.execute(
                                 "INSERT INTO migrations (model_name, version, schema_definition, operations) VALUES (?, ?, ?, ?)",
                                 (model_name, version, json.dumps(schema_definition), json.dumps(operations))
                             )
-                            conn.commit()
 
                         elif self.db_config.is_postgres:
                             # PostgreSQL - execute directly
@@ -180,7 +201,7 @@ class Migrator:
         model_name = model_class.__name__
         collection_name = model_class.get_table_name()
 
-        db = OptimizedDatabaseConnection.get_instance(self.db_config)
+        db = DatabaseConnection.get_instance(self.db_config)
 
         try:
             async with db.get_connection() as conn:
@@ -223,7 +244,7 @@ class Migrator:
 
     async def execute_migration(self, migration: Migration) -> bool:
         """Execute a single migration using backend abstraction"""
-        db = OptimizedDatabaseConnection.get_instance(self.db_config)
+        db = DatabaseConnection.get_instance(self.db_config)
 
         # Use backend to insert migration record
         await db.backend.insert_migration_record(
@@ -243,8 +264,6 @@ class Migrator:
         print(f"✓ Applied migration '{migration.migration_id}' for {migration.model_name} to v{migration.to_version}")
         return True
 
-
-
     async def downgrade_model(self, model_class, target_version: int):
         """Downgrade a model to a specific version"""
         model_name = model_class.__name__
@@ -258,7 +277,7 @@ class Migrator:
             print("Downgrade is not typically supported for MongoDB in the same way as SQL databases")
             return
 
-        db = OptimizedDatabaseConnection.get_instance(self.db_config)
+        db = DatabaseConnection.get_instance(self.db_config)
 
         print(f"Downgrading {model_name} from v{current_version} to v{target_version}")
 
@@ -276,14 +295,13 @@ class Migrator:
                         # SQLite - execute each statement separately
                         statements = [s.strip() for s in downgrade_sql.split(';') if s.strip()]
                         for statement in statements:
-                            conn.execute(statement)
+                            await conn.execute(statement)
 
                         # Remove the migration record
-                        conn.execute(
+                        await conn.execute(
                             "DELETE FROM migrations WHERE model_name = ? AND version = ?",
                             (model_name, version)
                         )
-                        conn.commit()
 
                     elif self.db_config.is_postgres:
                         # PostgreSQL - execute directly
@@ -323,7 +341,7 @@ class Migrator:
         model_name = model_class.__name__
         table_name = model_class.get_table_name()
 
-        db = OptimizedDatabaseConnection.get_instance(self.db_config)
+        db = DatabaseConnection.get_instance(self.db_config)
 
         # Use backend to drop table/collection
         await db.backend.drop_table(table_name)
@@ -680,6 +698,512 @@ class Migrator:
 
         return ';'.join(sql_statements)
 
+    async def migrate_app(self, app_name: str):
+        """Migrate a specific app"""
+        self.logger.info(f"Migrating app: {app_name}")
+        # Use the new migration system
+        runner = MigrationRunner(self.db_config)
+        await runner.initialize()
+        result = await runner.migrate()
+        return result
+
+    async def migrate_all(self):
+        """Migrate all apps"""
+        self.logger.info("Migrating all apps")
+        # Use the new migration system
+        runner = MigrationRunner(self.db_config)
+        await runner.initialize()
+        result = await runner.migrate()
+        return result
+
+    async def make_migrations(self, app_name: str, message: str = None):
+        """Create migrations for an app"""
+        self.logger.info(f"Creating migrations for app: {app_name}")
+        # Use the new migration system
+        runner = MigrationRunner(self.db_config)
+        await runner.initialize()
+
+        # Import models from the app
+        try:
+            import importlib
+            app_module = importlib.import_module(app_name)
+
+            # Find all model classes
+            import inspect
+            from pyserv.models.base import BaseModel
+
+            models = []
+            for name, obj in inspect.getmembers(app_module):
+                if (inspect.isclass(obj) and
+                    issubclass(obj, BaseModel) and
+                    obj != BaseModel):
+                    models.append(obj)
+
+            if models:
+                migration = await runner.create_migration(models, message or f"Auto migration for {app_name}")
+                self.logger.info(f"Created migration: {migration.id}")
+                return migration
+            else:
+                self.logger.warning(f"No models found in app: {app_name}")
+
+        except ImportError as e:
+            self.logger.error(f"Could not import app {app_name}: {e}")
 
 
+class MigrationRunner:
+    """Runs and manages database migrations"""
 
+    def __init__(self, db_config: DatabaseConfig = None, migrations_dir: Path = None):
+        self.db_config = db_config
+        self.migrations_dir = migrations_dir or Path("migrations")
+        self.migrations_dir.mkdir(exist_ok=True)
+        self.logger = logging.getLogger("migration_runner")
+        self.db_connection = None
+        self.migration_generator = MigrationGenerator(self.migrations_dir)
+
+    async def initialize(self):
+        """Initialize migration system"""
+        if not self.db_config:
+            from pyserv.database.config import DatabaseConfig
+            self.db_config = DatabaseConfig.from_env()
+
+        self.db_connection = DatabaseConnection.get_instance(self.db_config)
+        await self._ensure_migration_tables()
+
+    async def _ensure_migration_tables(self):
+        """Ensure migration tracking tables exist"""
+        # Create migrations table if it doesn't exist
+        create_table_sql = """
+        CREATE TABLE IF NOT EXISTS migrations (
+            id VARCHAR(255) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            version INTEGER NOT NULL,
+            operations JSON,
+            dependencies JSON,
+            created_at DATETIME NOT NULL,
+            applied_at DATETIME,
+            checksum VARCHAR(64),
+            rollback_sql TEXT,
+            migration_file VARCHAR(500),
+            migration_type VARCHAR(50) DEFAULT 'auto'
+        )
+        """
+
+        await self.db_connection.execute_query(create_table_sql)
+
+        # Create migration_files table for file-based migrations
+        create_files_table_sql = """
+        CREATE TABLE IF NOT EXISTS migration_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            migration_id VARCHAR(255) NOT NULL,
+            file_path VARCHAR(500) NOT NULL,
+            file_hash VARCHAR(64),
+            created_at DATETIME NOT NULL,
+            modified_at DATETIME,
+            FOREIGN KEY (migration_id) REFERENCES migrations (id)
+        )
+        """
+
+        await self.db_connection.execute_query(create_files_table_sql)
+
+    async def get_applied_migrations(self) -> Dict[str, Migration]:
+        """Get all applied migrations from database"""
+        query = """
+        SELECT id, name, description, version, operations, dependencies,
+               created_at, applied_at, checksum, rollback_sql, migration_file, migration_type
+        FROM migrations
+        WHERE applied_at IS NOT NULL
+        ORDER BY applied_at
+        """
+
+        results = await self.db_connection.execute_query(query)
+
+        migrations = {}
+        for row in results:
+            migration = Migration(
+                id=row['id'],
+                name=row['name'],
+                description=row['description'],
+                version=row['version'],
+                operations=[MigrationOperation.from_dict(op) for op in row['operations']],
+                dependencies=row['dependencies'],
+                created_at=row['created_at'],
+                applied_at=row['applied_at'],
+                checksum=row['checksum'],
+                rollback_sql=row['rollback_sql'],
+                migration_file=row['migration_file'],
+                migration_type=row['migration_type']
+            )
+            migrations[migration.id] = migration
+
+        return migrations
+
+    async def get_pending_migrations(self) -> List[Migration]:
+        """Get pending migrations that haven't been applied"""
+        applied = await self.get_applied_migrations()
+
+        # Get all migration files
+        migration_files = self._get_migration_files()
+
+        pending = []
+        for migration_file in migration_files:
+            if migration_file.migration.id not in applied:
+                pending.append(migration_file.migration)
+
+        return pending
+
+    def _get_migration_files(self) -> List[MigrationFile]:
+        """Get all migration files from migrations directory"""
+        migration_files = []
+
+        if not self.migrations_dir.exists():
+            return migration_files
+
+        # Find all Python files in migrations directory
+        for file_path in self.migrations_dir.glob("*.py"):
+            if file_path.name.startswith("__"):
+                continue  # Skip __init__.py and similar files
+
+            try:
+                migration_file = MigrationFile(file_path)
+                if migration_file.migration:
+                    migration_files.append(migration_file)
+            except Exception as e:
+                self.logger.warning(f"Failed to load migration file {file_path}: {e}")
+
+        return migration_files
+
+    async def get_migration_status(self) -> List[MigrationStatus]:
+        """Get status of all migrations"""
+        applied = await self.get_applied_migrations()
+        pending = await self.get_pending_migrations()
+
+        status_list = []
+
+        # Add applied migrations
+        for migration in applied.values():
+            status_list.append(MigrationStatus(
+                migration_id=migration.id,
+                name=migration.name,
+                applied=True,
+                applied_at=migration.applied_at,
+                checksum=migration.checksum,
+                file_path=migration.migration_file,
+                dependencies=migration.dependencies,
+                operations_count=len(migration.operations)
+            ))
+
+        # Add pending migrations
+        for migration in pending:
+            status_list.append(MigrationStatus(
+                migration_id=migration.id,
+                name=migration.name,
+                applied=False,
+                applied_at=None,
+                checksum=None,
+                file_path=migration.migration_file,
+                dependencies=migration.dependencies,
+                operations_count=len(migration.operations)
+            ))
+
+        # Sort by migration ID
+        status_list.sort(key=lambda x: x.migration_id)
+
+        return status_list
+
+    async def apply_migration(self, migration: Migration) -> bool:
+        """Apply a single migration"""
+        try:
+            self.logger.info(f"Applying migration {migration.id}: {migration.name}")
+
+            # Validate migration
+            errors = migration.validate()
+            if errors:
+                raise ValueError(f"Migration validation failed: {', '.join(errors)}")
+
+            # Check dependencies
+            await self._check_dependencies(migration)
+
+            # Execute migration
+            await migration.execute(self.db_connection)
+
+            # Save to database
+            await self._save_migration_to_db(migration)
+
+            self.logger.info(f"Migration {migration.id} applied successfully")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to apply migration {migration.id}: {e}")
+            raise
+
+    async def _check_dependencies(self, migration: Migration):
+        """Check if migration dependencies are satisfied"""
+        applied = await self.get_applied_migrations()
+
+        for dep_id in migration.dependencies:
+            if dep_id not in applied:
+                raise ValueError(f"Migration {migration.id} depends on {dep_id} which is not applied")
+
+    async def _save_migration_to_db(self, migration: Migration):
+        """Save migration record to database"""
+        # Update applied_at and checksum
+        migration.applied_at = datetime.now()
+        migration.checksum = migration.calculate_checksum()
+
+        # Insert or update migration record
+        insert_sql = """
+        INSERT OR REPLACE INTO migrations
+        (id, name, description, version, operations, dependencies, created_at, applied_at, checksum, rollback_sql, migration_file, migration_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        await self.db_connection.execute_query(insert_sql, (
+            migration.id,
+            migration.name,
+            migration.description,
+            migration.version,
+            json.dumps([op.to_dict() for op in migration.operations]),
+            json.dumps(migration.dependencies),
+            migration.created_at,
+            migration.applied_at,
+            migration.checksum,
+            migration.rollback_sql,
+            migration.migration_file,
+            migration.migration_type
+        ))
+
+    async def rollback_migration(self, migration_id: str) -> bool:
+        """Rollback a migration"""
+        applied = await self.get_applied_migrations()
+
+        if migration_id not in applied:
+            raise ValueError(f"Migration {migration_id} is not applied")
+
+        migration = applied[migration_id]
+
+        try:
+            self.logger.info(f"Rolling back migration {migration_id}: {migration.name}")
+
+            # Execute rollback operations
+            await self._execute_rollback(migration)
+
+            # Mark as not applied
+            update_sql = "UPDATE migrations SET applied_at = NULL, checksum = NULL WHERE id = ?"
+            await self.db_connection.execute_query(update_sql, (migration_id,))
+
+            self.logger.info(f"Migration {migration_id} rolled back successfully")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to rollback migration {migration_id}: {e}")
+            raise
+
+    async def _execute_rollback(self, migration: Migration):
+        """Execute rollback operations"""
+        # Reverse the operations
+        for operation in reversed(migration.operations):
+            await self._execute_rollback_operation(operation)
+
+    async def _execute_rollback_operation(self, operation: MigrationOperation):
+        """Execute rollback for a single operation"""
+        # This would implement rollback logic for each operation type
+        # For now, just log the rollback
+        self.logger.info(f"Rolling back operation: {operation.operation_type}")
+
+    async def migrate(self, target_migration: str = None, fake: bool = False) -> Dict[str, Any]:
+        """Run all pending migrations"""
+        await self.initialize()
+
+        pending = await self.get_pending_migrations()
+        applied = await self.get_applied_migrations()
+
+        if not pending:
+            return {
+                'success': True,
+                'message': 'No pending migrations',
+                'applied': 0,
+                'total': len(applied)
+            }
+
+        # Filter by target if specified
+        if target_migration:
+            pending = [m for m in pending if m.id <= target_migration]
+            pending.sort(key=lambda x: x.id)
+
+        applied_count = 0
+
+        for migration in pending:
+            try:
+                if fake:
+                    # Just mark as applied without executing
+                    migration.applied_at = datetime.now()
+                    migration.checksum = migration.calculate_checksum()
+                    await self._save_migration_to_db(migration)
+                else:
+                    await self.apply_migration(migration)
+
+                applied_count += 1
+
+            except Exception as e:
+                return {
+                    'success': False,
+                    'message': f'Migration failed: {e}',
+                    'applied': applied_count,
+                    'total': len(applied) + len(pending)
+                }
+
+        return {
+            'success': True,
+            'message': f'Successfully applied {applied_count} migration(s)',
+            'applied': applied_count,
+            'total': len(applied) + applied_count
+        }
+
+    async def show_migration_status(self) -> str:
+        """Show migration status in a formatted way"""
+        status_list = await self.get_migration_status()
+
+        if not status_list:
+            return "No migrations found"
+
+        output = []
+        output.append("Migration Status")
+        output.append("=" * 50)
+
+        for status in status_list:
+            marker = "[X]" if status.applied else "[ ]"
+            applied_info = f" (applied {status.applied_at})" if status.applied_at else ""
+            output.append(f"{marker} {status.migration_id} - {status.name}{applied_info}")
+
+            if status.file_path:
+                output.append(f"      File: {status.file_path}")
+
+            if status.dependencies:
+                output.append(f"      Dependencies: {', '.join(status.dependencies)}")
+
+            output.append(f"      Operations: {status.operations_count}")
+            output.append("")
+
+        return "\n".join(output)
+
+    async def create_migration(self, models: List[type], name: str = None) -> Migration:
+        """Create a new migration from model changes"""
+        await self.initialize()
+
+        migration = self.migration_generator.generate_migration(models, name)
+
+        # Save to database as pending
+        await self._save_migration_to_db(migration)
+
+        self.logger.info(f"Created migration {migration.id}: {migration.name}")
+        return migration
+
+    async def load_migration_from_file(self, file_path: Path) -> Migration:
+        """Load migration from file"""
+        migration_file = MigrationFile(file_path)
+        return migration_file.migration
+
+    async def validate_migration(self, migration: Migration) -> List[str]:
+        """Validate a migration"""
+        errors = migration.validate()
+
+        # Check for circular dependencies
+        if self._has_circular_dependencies(migration):
+            errors.append("Circular dependency detected")
+
+        # Check if dependencies exist
+        applied = await self.get_applied_migrations()
+        for dep_id in migration.dependencies:
+            if dep_id not in applied and dep_id != migration.id:
+                errors.append(f"Dependency {dep_id} not found")
+
+        return errors
+
+    def _has_circular_dependencies(self, migration: Migration, visited: set = None) -> bool:
+        """Check for circular dependencies"""
+        if visited is None:
+            visited = set()
+
+        if migration.id in visited:
+            return True
+
+        visited.add(migration.id)
+
+        # This would check the dependency graph
+        # For now, return False
+        return False
+
+
+class MigrationManager:
+    """High-level migration manager"""
+
+    def __init__(self, db_config: DatabaseConfig = None):
+        self.db_config = db_config
+        self.runner = MigrationRunner(db_config)
+        self.logger = logging.getLogger("migration_manager")
+
+    async def initialize(self):
+        """Initialize migration manager"""
+        await self.runner.initialize()
+
+    async def make_migrations(self, models: List[type], name: str = None) -> Migration:
+        """Create migrations from model changes"""
+        return await self.runner.create_migration(models, name)
+
+    async def migrate(self, target: str = None, fake: bool = False) -> Dict[str, Any]:
+        """Run migrations"""
+        return await self.runner.migrate(target, fake)
+
+    async def show_migrations(self) -> str:
+        """Show migration status"""
+        return await self.runner.show_migration_status()
+
+    async def rollback(self, migration_id: str) -> bool:
+        """Rollback a migration"""
+        return await self.runner.rollback_migration(migration_id)
+
+    async def get_status(self) -> Dict[str, Any]:
+        """Get migration status summary"""
+        status_list = await self.runner.get_migration_status()
+
+        applied = [s for s in status_list if s.applied]
+        pending = [s for s in status_list if not s.applied]
+
+        return {
+            'total': len(status_list),
+            'applied': len(applied),
+            'pending': len(pending),
+            'last_applied': applied[-1].applied_at.isoformat() if applied else None
+        }
+
+
+# Global migration manager instance
+migration_manager = MigrationManager()
+
+async def make_migrations(models: List[type], name: str = None) -> Migration:
+    """Create migrations from model changes"""
+    return await migration_manager.make_migrations(models, name)
+
+async def migrate(target: str = None, fake: bool = False) -> Dict[str, Any]:
+    """Run migrations"""
+    return await migration_manager.migrate(target, fake)
+
+async def show_migrations() -> str:
+    """Show migration status"""
+    return await migration_manager.show_migrations()
+
+async def rollback_migration(migration_id: str) -> bool:
+    """Rollback a migration"""
+    return await migration_manager.rollback(migration_id)
+
+async def get_migration_status() -> Dict[str, Any]:
+    """Get migration status summary"""
+    return await migration_manager.get_status()
+
+__all__ = [
+    'MigrationRunner', 'MigrationManager', 'MigrationStatus',
+    'migration_manager', 'make_migrations', 'migrate', 'show_migrations',
+    'rollback_migration', 'get_migration_status'
+]

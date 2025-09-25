@@ -12,7 +12,7 @@ This module provides optimized database connection pooling with:
 import asyncio
 import logging
 import time
-from typing import Dict, List, Optional, Any, AsyncGenerator, Union
+from typing import Dict, List, Optional, Any, AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
@@ -21,8 +21,38 @@ import aiomysql
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import ConnectionFailure
 
-from pyserv.database import DatabaseConnection
-from pyserv.performance.monitoring.metrics import get_metrics_collector
+from pyserv.database.connection import AbstractDatabaseConnection
+
+
+class SimpleMetricsCollector:
+    """Simple metrics collector for database pools"""
+
+    def __init__(self):
+        self.gauges = {}
+        self.counters = {}
+
+    def create_gauge(self, name: str, description: str):
+        """Create a gauge metric"""
+        self.gauges[name] = {'value': 0, 'description': description}
+
+    def create_counter(self, name: str, description: str):
+        """Create a counter metric"""
+        self.counters[name] = {'value': 0, 'description': description}
+
+    def set_gauge(self, name: str, value: float):
+        """Set gauge value"""
+        if name in self.gauges:
+            self.gauges[name]['value'] = value
+
+    def increment_counter(self, name: str):
+        """Increment counter"""
+        if name in self.counters:
+            self.counters[name]['value'] += 1
+
+
+def get_metrics_collector() -> SimpleMetricsCollector:
+    """Get metrics collector instance"""
+    return SimpleMetricsCollector()
 
 
 @dataclass
@@ -345,7 +375,7 @@ class MongoDBPool(DatabasePool):
         return self.client
 
 
-class OptimizedDatabaseConnection(DatabaseConnection):
+class DatabaseConnection(AbstractDatabaseConnection):
     """Enhanced database connection with pooling support"""
 
     def __init__(self, config, pool_config: PoolConfig = None):
@@ -416,13 +446,9 @@ class OptimizedDatabaseConnection(DatabaseConnection):
 # Global pool manager
 _pool_manager = {}
 
-def get_pooled_connection(config, pool_config: PoolConfig = None) -> OptimizedDatabaseConnection:
+def get_pooled_connection(config, pool_config: PoolConfig = None) -> DatabaseConnection:
     """Get or create pooled database connection"""
     key = str(config.database_url)
     if key not in _pool_manager:
-        _pool_manager[key] = OptimizedDatabaseConnection(config, pool_config)
+        _pool_manager[key] = DatabaseConnection(config, pool_config)
     return _pool_manager[key]
-
-
-
-

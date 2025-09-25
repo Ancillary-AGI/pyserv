@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 from pyserv.http.request import Request
 from pyserv.http.response import Response
 from pyserv.server.application import Application
-from pyserv.database import DatabaseConnection
+from pyserv.database import AbstractDatabaseConnection
 from pyserv.caching import get_cache_manager
 
 

@@ -309,6 +309,50 @@ class MySQLBackend:
         query = f"DROP INDEX {index_name} ON {table_name}"
         await self.execute_query(query)
 
+    async def add_field(self, model_name: str, field_name: str, field: Field) -> None:
+        """Add a field to an existing model/table for MySQL"""
+        table_name = model_name.lower() + 's'  # Follow convention
+        column_definition = f"{field_name} {self.get_sql_type(field)}"
+
+        if field.primary_key:
+            column_definition += " PRIMARY KEY"
+            if field.autoincrement:
+                column_definition += " AUTO_INCREMENT"
+
+        if not field.nullable:
+            column_definition += " NOT NULL"
+
+        if field.default is not None:
+            column_definition += f" DEFAULT {self._format_default(field.default)}"
+
+        query = f"ALTER TABLE {table_name} ADD COLUMN {column_definition}"
+        await self.execute_query(query)
+
+    async def remove_field(self, model_name: str, field_name: str) -> None:
+        """Remove a field from an existing model/table for MySQL"""
+        table_name = model_name.lower() + 's'  # Follow convention
+        query = f"ALTER TABLE {table_name} DROP COLUMN {field_name}"
+        await self.execute_query(query)
+
+    async def alter_field(self, model_name: str, field_name: str, field: Field) -> None:
+        """Alter an existing field in a model/table for MySQL"""
+        table_name = model_name.lower() + 's'  # Follow convention
+        column_definition = self.get_sql_type(field)
+
+        if field.primary_key:
+            column_definition += " PRIMARY KEY"
+            if field.autoincrement:
+                column_definition += " AUTO_INCREMENT"
+
+        if not field.nullable:
+            column_definition += " NOT NULL"
+
+        if field.default is not None:
+            column_definition += f" DEFAULT {self._format_default(field.default)}"
+
+        query = f"ALTER TABLE {table_name} MODIFY COLUMN {field_name} {column_definition}"
+        await self.execute_query(query)
+
     async def execute_query_builder(self, model_class: Type, query_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Execute a complex query built by QueryBuilder for MySQL"""
         # Extract query parameters
@@ -406,7 +450,3 @@ class MySQLBackend:
                 await cursor.execute(query, tuple(params))
                 results = await cursor.fetchall()
                 return [dict(row) for row in results]
-
-
-
-

@@ -5,7 +5,7 @@ from typing import AsyncGenerator
 
 import pytest
 
-from pyserv.database.database_pool import OptimizedDatabaseConnection
+from pyserv.database.database_pool import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.models.base import BaseModel
 
@@ -14,7 +14,7 @@ from pyserv.models.base import BaseModel
 async def db_connection():
     """Test database connection."""
     config = DatabaseConfig("sqlite:///:memory:")
-    connection = OptimizedDatabaseConnection.get_instance(config)
+    connection = DatabaseConnection.get_instance(config)
     await connection.connect()
     yield connection
     await connection.disconnect()
@@ -33,7 +33,3 @@ def test_model():
             collection = "test_models"
 
     return TestModel
-
-
-
-

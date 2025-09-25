@@ -1,323 +1,310 @@
 """
-Framework integration for migrations - handles automatic discovery and execution.
+Migration framework integration for Pyserv.
+Provides high-level migration functions and model introspection.
 """
 
 import asyncio
-import importlib
-import pkgutil
+import logging
 import inspect
-import os
 from typing import Dict, List, Any, Optional, Type
+from datetime import datetime
 from pathlib import Path
 
-from pyserv.migrations.migration import Migration
-from pyserv.migrations.migrator import Migrator
-from pyserv.database import DatabaseConnection
+from pyserv.database.database_pool import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
-from pyserv.database.backends import get_backend
 from pyserv.models.base import BaseModel
-from pyserv.utils.types import Field
+from .migrator import MigrationRunner, MigrationManager, Migrator
+from .migration import Migration, MigrationOperation, MigrationOperationType
 
 
 class MigrationFramework:
-    """
-    Framework integration for handling migrations automatically.
-    Solves the problem of users not having direct access to migration scripts.
-    """
+    """High-level migration framework for Pyserv applications"""
 
-    def __init__(self, db_config: DatabaseConfig, app_package: str = "app"):
+    def __init__(self, db_config: DatabaseConfig = None):
         self.db_config = db_config
-        self.app_package = app_package
-        self.migrator = Migrator.get_instance(db_config)
-        self.discovered_models: List[Type[BaseModel]] = []
+        self.migration_manager = MigrationManager(db_config)
+        self.logger = logging.getLogger("migration_framework")
 
     async def initialize(self):
         """Initialize the migration framework"""
-        await self.migrator.initialize()
-        self.discovered_models = await self.discover_models()
+        await self.migration_manager.initialize()
 
-    async def discover_models(self, package_name: str = None) -> List[Type[BaseModel]]:
-        """Automatically discover all models in the application"""
-        if package_name is None:
-            package_name = self.app_package
-
+    async def discover_models(self, package_name: str) -> List[Type[BaseModel]]:
+        """Discover all BaseModel subclasses in a package"""
         models = []
 
         try:
-            # Import the main package
+            import importlib
             package = importlib.import_module(package_name)
 
-            # Look for models in common locations
-            search_paths = [
-                package_name,                    # app
-                f"{package_name}.models",        # app.models
-                f"{package_name}.models.base",   # app.models.base
-            ]
+            # Get all members of the package
+            for name, obj in inspect.getmembers(package):
+                if (inspect.isclass(obj) and
+                    issubclass(obj, BaseModel) and
+                    obj != BaseModel):
+                    models.append(obj)
 
-            for path in search_paths:
-                try:
-                    models.extend(await self._discover_models_in_package(path))
-                except ImportError:
-                    continue  # Package doesn't exist, try next
-
-            # Also search in subdirectories
-            if hasattr(package, '__path__'):
-                for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__):
-                    if not is_pkg and 'model' in module_name.lower():
-                        try:
-                            full_module_name = f"{package_name}.{module_name}"
-                            models.extend(await self._discover_models_in_module(full_module_name))
-                        except ImportError:
-                            continue
-
-        except ImportError as e:
-            print(f"Could not import package {package_name}: {e}")
-
-        return models
-
-    async def _discover_models_in_package(self, package_name: str) -> List[Type[BaseModel]]:
-        """Discover models in a specific package"""
-        models = []
-
-        try:
-            package = importlib.import_module(package_name)
-
-            # Check the package module itself
-            models.extend(self._extract_models_from_module(package))
-
-            # Check all submodules
-            if hasattr(package, '__path__'):
-                for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__):
-                    if not is_pkg:
-                        try:
-                            full_module_name = f"{package_name}.{module_name}"
-                            module = importlib.import_module(full_module_name)
-                            models.extend(self._extract_models_from_module(module))
-                        except ImportError:
-                            continue
-
-        except ImportError:
-            pass
-
-        return models
-
-    async def _discover_models_in_module(self, module_name: str) -> List[Type[BaseModel]]:
-        """Discover models in a specific module"""
-        models = []
-
-        try:
-            module = importlib.import_module(module_name)
-            models.extend(self._extract_models_from_module(module))
-        except ImportError:
-            pass
-
-        return models
-
-    def _extract_models_from_module(self, module) -> List[Type[BaseModel]]:
-        """Extract BaseModel subclasses from a module"""
-        models = []
-
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-            if (issubclass(obj, BaseModel) and
-                obj != BaseModel and
-                hasattr(obj, '_fields') and
-                obj._fields):  # Must have fields defined
-                models.append(obj)
-
-        return models
-
-    async def run_auto_migrations(self, dry_run: bool = False) -> Dict[str, Any]:
-        """
-        Automatically run all pending migrations.
-        This is the main entry point for framework users.
-        """
-        results = {
-            'models_processed': 0,
-            'migrations_applied': 0,
-            'errors': [],
-            'migrations': []
-        }
-
-        print("🔄 Starting automatic migration discovery...")
-
-        for model_class in self.discovered_models:
-            try:
-                model_name = model_class.__name__
-                current_version = await self.migrator.get_current_version(model_name)
-                target_version = getattr(model_class, '_migration_version', 1)
-
-                if current_version >= target_version:
-                    print(f"✓ {model_name} is up to date (v{current_version})")
+            # Also check submodules
+            package_path = Path(package.__file__).parent
+            for py_file in package_path.glob("*.py"):
+                if py_file.name.startswith("__"):
                     continue
 
-                print(f"📦 Processing {model_name}: v{current_version} -> v{target_version}")
+                module_name = f"{package_name}.{py_file.stem}"
+                try:
+                    module = importlib.import_module(module_name)
+                    for name, obj in inspect.getmembers(module):
+                        if (inspect.isclass(obj) and
+                            issubclass(obj, BaseModel) and
+                            obj != BaseModel):
+                            if obj not in models:
+                                models.append(obj)
+                except ImportError:
+                    continue
 
-                # Generate migration for this model
-                migration = await self._generate_migration_for_model(model_class, current_version, target_version)
+        except ImportError as e:
+            self.logger.warning(f"Could not import package {package_name}: {e}")
 
-                if migration:
-                    if not dry_run:
-                        success = await self.migrator.execute_migration(migration)
-                        if success:
-                            results['migrations_applied'] += 1
-                            results['migrations'].append({
-                                'model': model_name,
-                                'migration_id': migration.migration_id,
-                                'from_version': current_version,
-                                'to_version': target_version,
-                                'operations': len(migration.operations)
-                            })
-                        else:
-                            results['errors'].append(f"Failed to apply migration for {model_name}")
-                    else:
-                        print(f"  [DRY RUN] Would apply migration: {migration}")
-                        results['migrations'].append({
-                            'model': model_name,
-                            'migration_id': migration.migration_id,
-                            'from_version': current_version,
-                            'to_version': target_version,
-                            'operations': len(migration.operations),
-                            'dry_run': True
-                        })
+        return models
 
-                results['models_processed'] += 1
-
-            except Exception as e:
-                error_msg = f"Error processing {model_class.__name__}: {e}"
-                print(f"❌ {error_msg}")
-                results['errors'].append(error_msg)
-
-        if not dry_run:
-            print(f"✅ Migration complete: {results['migrations_applied']} migrations applied")
-        else:
-            print(f"📋 Dry run complete: {len(results['migrations'])} migrations would be applied")
-
-        return results
-
-    async def _generate_migration_for_model(self, model_class: Type[BaseModel],
-                                          from_version: int, to_version: int) -> Optional[Migration]:
-        """Generate a migration for a model based on its current state"""
-        model_name = model_class.__name__
-
-        # For now, create a simple migration that captures the current schema
-        # In a full implementation, this would compare against previous versions
-        operations = {
-            'added_columns': [],
-            'removed_columns': [],
-            'modified_columns': [],
-            'added_indexes': [],
-            'removed_indexes': []
+    async def analyze_model_changes(self, models: List[Type[BaseModel]]) -> Dict[str, Any]:
+        """Analyze models for changes that need migrations"""
+        changes = {
+            'models': {},
+            'fields': {},
+            'relationships': {}
         }
 
-        # Analyze current fields
-        for field_name, field in model_class._fields.items():
-            if field.index:
-                operations['added_indexes'].append({
-                    'name': field_name,
-                    'index_name': f"idx_{model_class.get_table_name()}_{field_name}"
-                })
-
-        # Serialize current schema
-        schema_definition = self._serialize_schema(model_class._fields)
-
-        return Migration(
-            model_class=model_class,
-            from_version=from_version,
-            to_version=to_version,
-            operations=operations,
-            schema_definition=schema_definition
-        )
-
-    def _serialize_schema(self, fields: Dict[str, Field]) -> Dict:
-        """Serialize field definitions for storage"""
-        return {name: self._serialize_field(field) for name, field in fields.items()}
-
-    def _serialize_field(self, field: Field) -> Dict:
-        """Serialize a field definition for storage"""
-        return {
-            'field_type': field.field_type.value if hasattr(field.field_type, 'value') else str(field.field_type),
-            'primary_key': field.primary_key,
-            'autoincrement': field.autoincrement,
-            'unique': field.unique,
-            'nullable': field.nullable,
-            'default': field.default,
-            'foreign_key': field.foreign_key,
-            'index': field.index
-        }
-
-    async def get_migration_status(self) -> Dict[str, Any]:
-        """Get current migration status for all discovered models"""
-        status = {
-            'models': [],
-            'total_models': len(self.discovered_models),
-            'up_to_date': 0,
-            'needs_update': 0
-        }
-
-        for model_class in self.discovered_models:
-            model_name = model_class.__name__
-            current_version = await self.migrator.get_current_version(model_name)
-            target_version = getattr(model_class, '_migration_version', 1)
-
-            model_status = {
-                'name': model_name,
-                'current_version': current_version,
-                'target_version': target_version,
-                'up_to_date': current_version >= target_version,
-                'table_name': model_class.get_table_name(),
-                'field_count': len(model_class._fields)
+        # This would compare models with database schema
+        # For now, return basic structure
+        for model in models:
+            model_name = model.__name__
+            changes['models'][model_name] = {
+                'create': True,  # Assume new model needs creation
+                'fields': {},
+                'relationships': {}
             }
 
-            status['models'].append(model_status)
+            # Analyze fields
+            if hasattr(model, '_fields'):
+                for field_name, field in model._fields.items():
+                    changes['models'][model_name]['fields'][field_name] = {
+                        'type': str(field.__class__.__name__),
+                        'options': getattr(field, 'options', {})
+                    }
 
-            if model_status['up_to_date']:
-                status['up_to_date'] += 1
+        return changes
+
+    async def create_migration_from_models(self, models: List[Type[BaseModel]], name: str = None) -> Migration:
+        """Create a migration from model analysis"""
+        changes = await self.analyze_model_changes(models)
+
+        # Create migration operations
+        operations = []
+
+        for model_name, model_changes in changes['models'].items():
+            if model_changes.get('create'):
+                operations.append(MigrationOperation(
+                    operation_type=MigrationOperationType.CREATE_MODEL,
+                    model_name=model_name
+                ))
+
+            for field_name, field_info in model_changes.get('fields', {}).items():
+                operations.append(MigrationOperation(
+                    operation_type=MigrationOperationType.ADD_FIELD,
+                    model_name=model_name,
+                    field_name=field_name,
+                    field_type=field_info['type'],
+                    field_options=field_info['options']
+                ))
+
+        # Generate migration ID
+        timestamp = int(datetime.now().timestamp())
+        migration_id = f"{timestamp:010d}"
+
+        if not name:
+            name = f"auto_{migration_id}"
+
+        migration = Migration(
+            id=migration_id,
+            name=name,
+            description=f"Auto-generated migration from model analysis: {name}",
+            version=1,
+            operations=operations
+        )
+
+        return migration
+
+    async def migrate_app(self, app_package: str, dry_run: bool = False) -> Dict[str, Any]:
+        """Migrate an entire application"""
+        await self.initialize()
+
+        # Discover models
+        models = await self.discover_models(app_package)
+
+        if not models:
+            return {
+                'success': True,
+                'message': f'No models found in {app_package}',
+                'models_processed': 0,
+                'migrations_applied': 0,
+                'migrations': []
+            }
+
+        # Create migration from models
+        migration = await self.create_migration_from_models(models)
+
+        if not migration.operations:
+            return {
+                'success': True,
+                'message': 'No changes detected',
+                'models_processed': len(models),
+                'migrations_applied': 0,
+                'migrations': []
+            }
+
+        # Save migration to file
+        from .migration import MigrationGenerator
+        generator = MigrationGenerator()
+        migration_file = generator.save_migration_file(migration)
+
+        if dry_run:
+            return {
+                'success': True,
+                'message': 'Dry run completed',
+                'models_processed': len(models),
+                'migrations_applied': 0,
+                'migrations': [{
+                    'id': migration.id,
+                    'name': migration.name,
+                    'operations': len(migration.operations),
+                    'file': str(migration_file)
+                }]
+            }
+
+        # Apply migration
+        runner = MigrationRunner(self.db_config)
+        await runner.initialize()
+
+        try:
+            success = await runner.apply_migration(migration)
+
+            if success:
+                return {
+                    'success': True,
+                    'message': f'Successfully applied migration {migration.id}',
+                    'models_processed': len(models),
+                    'migrations_applied': 1,
+                    'migrations': [{
+                        'id': migration.id,
+                        'name': migration.name,
+                        'operations': len(migration.operations),
+                        'file': str(migration_file)
+                    }]
+                }
             else:
-                status['needs_update'] += 1
+                return {
+                    'success': False,
+                    'message': f'Failed to apply migration {migration.id}',
+                    'models_processed': len(models),
+                    'migrations_applied': 0,
+                    'migrations': []
+                }
 
-        return status
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Migration failed: {e}',
+                'models_processed': len(models),
+                'migrations_applied': 0,
+                'migrations': []
+            }
 
-    async def create_initial_tables(self):
-        """Create initial tables for all models (useful for first setup)"""
-        print("🏗️  Creating initial tables...")
+    async def check_migration_status(self, app_package: str) -> Dict[str, Any]:
+        """Check migration status for an application"""
+        await self.initialize()
 
-        for model_class in self.discovered_models:
-            try:
-                if not self.db_config.is_mongodb:  # MongoDB creates collections automatically
-                    await model_class.create_table()
-                print(f"✓ Created table for {model_class.__name__}")
-            except Exception as e:
-                print(f"❌ Failed to create table for {model_class.__name__}: {e}")
+        # Discover models
+        models = await self.discover_models(app_package)
 
-        print("✅ Initial table creation complete")
+        # Get migration status
+        runner = MigrationRunner(self.db_config)
+        await runner.initialize()
+        migration_statuses = await runner.get_migration_status()
+
+        # Analyze each model
+        model_statuses = []
+        up_to_date = 0
+        needs_update = 0
+
+        for model in models:
+            model_name = model.__name__
+
+            # Check if model has corresponding migration
+            model_migrations = [ms for ms in migration_statuses if model_name.lower() in ms.name.lower()]
+
+            if model_migrations:
+                latest_migration = max(model_migrations, key=lambda x: x.migration_id)
+                if latest_migration.applied:
+                    up_to_date += 1
+                    model_statuses.append({
+                        'name': model_name,
+                        'up_to_date': True,
+                        'current_version': 1,
+                        'target_version': 1,
+                        'last_migration': latest_migration.migration_id
+                    })
+                else:
+                    needs_update += 1
+                    model_statuses.append({
+                        'name': model_name,
+                        'up_to_date': False,
+                        'current_version': 0,
+                        'target_version': 1,
+                        'last_migration': latest_migration.migration_id
+                    })
+            else:
+                needs_update += 1
+                model_statuses.append({
+                    'name': model_name,
+                    'up_to_date': False,
+                    'current_version': 0,
+                    'target_version': 1,
+                    'last_migration': None
+                })
+
+        return {
+            'total_models': len(models),
+            'up_to_date': up_to_date,
+            'needs_update': needs_update,
+            'models': model_statuses
+        }
 
 
-# Convenience functions for framework integration
+# Global framework instance
+migration_framework = MigrationFramework()
 
-async def migrate_app(db_config: DatabaseConfig, app_package: str = "app", dry_run: bool = False):
-    """
-    Convenience function to migrate an entire application.
-    This is what framework users would call.
-    """
-    framework = MigrationFramework(db_config, app_package)
-    await framework.initialize()
-    return await framework.run_auto_migrations(dry_run=dry_run)
+async def migrate_app(db_config: DatabaseConfig = None, app_package: str = 'app.models', dry_run: bool = False) -> Dict[str, Any]:
+    """Migrate an entire application"""
+    framework = MigrationFramework(db_config)
+    return await framework.migrate_app(app_package, dry_run)
 
+async def check_migration_status(db_config: DatabaseConfig = None, app_package: str = 'app.models') -> Dict[str, Any]:
+    """Check migration status for an application"""
+    framework = MigrationFramework(db_config)
+    return await framework.check_migration_status(app_package)
 
-async def check_migration_status(db_config: DatabaseConfig, app_package: str = "app"):
-    """
-    Check migration status for an application.
-    """
-    framework = MigrationFramework(db_config, app_package)
-    await framework.initialize()
-    return await framework.get_migration_status()
+async def discover_models(package_name: str) -> List[Type[BaseModel]]:
+    """Discover all BaseModel subclasses in a package"""
+    framework = MigrationFramework()
+    return await framework.discover_models(package_name)
 
+async def analyze_model_changes(models: List[Type[BaseModel]]) -> Dict[str, Any]:
+    """Analyze models for changes that need migrations"""
+    framework = MigrationFramework()
+    return await framework.analyze_model_changes(models)
 
-async def setup_database(db_config: DatabaseConfig, app_package: str = "app"):
-    """
-    Set up database with initial tables and migrations.
-    """
-    framework = MigrationFramework(db_config, app_package)
-    await framework.initialize()
-    await framework.create_initial_tables()
-    await framework.run_auto_migrations()
+__all__ = [
+    'MigrationFramework', 'migration_framework', 'migrate_app',
+    'check_migration_status', 'discover_models', 'analyze_model_changes'
+]

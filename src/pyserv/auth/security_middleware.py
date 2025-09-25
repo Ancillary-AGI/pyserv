@@ -7,16 +7,11 @@ import re
 import hashlib
 import time
 import gzip
-import zlib
 import secrets
-import jwt
-import base64
 import hmac
-from typing import Dict, List, Optional, Any, Callable, Tuple, Union
+from typing import Dict, Optional
 from collections import defaultdict, deque
-import asyncio
 import threading
-from urllib.parse import unquote
 from datetime import datetime, timedelta
 import html
 
@@ -639,7 +634,3 @@ except ImportError:
 
 # Backward compatibility aliases
 SecurityMiddleware = UnifiedSecurityMiddleware
-
-
-
-

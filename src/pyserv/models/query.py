@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 import math
 import inspect
 
-from pyserv.database.database_pool import OptimizedDatabaseConnection
+from pyserv.database.database_pool import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.database.backends import get_backend
 from pyserv.utils.types import Field, Relationship, RelationshipType, OrderDirection, PaginatedResponse, AggregationResult, LazyLoad
@@ -28,7 +28,7 @@ class QueryBuilder(Generic[T]):
 
     def __init__(self, model_class: Type[T]):
         self.model_class = model_class
-        self.db = OptimizedDatabaseConnection.get_instance(self.model_class._db_config)
+        self.db = DatabaseConnection.get_instance(self.model_class._db_config)
         self.backend = self.db.backend
         self.conditions: List[str] = []
         self.params: List[Any] = []
@@ -284,6 +284,7 @@ class QueryBuilder(Generic[T]):
             local_keys = [getattr(instance, rel.local_key) for instance in instances]
 
             # Create through model dynamically
+            from pyserv.models.base import BaseModel
             through_class = type('ThroughModel', (BaseModel,), {
                 '_table_name': rel.through_table,
                 '_columns': {
@@ -464,7 +465,3 @@ class QueryBuilder(Generic[T]):
             sort_list.append((field, sort_direction))
 
         return sort_list
-
-
-
-

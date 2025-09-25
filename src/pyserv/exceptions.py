@@ -6,7 +6,7 @@ with proper error codes, HTTP status mappings, and production-ready error handli
 """
 
 from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 import json
 
@@ -648,7 +648,3 @@ __all__ = [
     'register_exception_handler',
     'get_exception_handler',
 ]
-
-
-
-

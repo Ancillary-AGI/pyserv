@@ -5,17 +5,14 @@ Provides resource controllers, serialization, versioning, and API documentation.
 
 import json
 import inspect
-from typing import Dict, List, Any, Optional, Union, Type, Callable, get_type_hints
+from typing import Dict, List, Any, Type, Callable
 from functools import wraps
-from datetime import datetime
-from urllib.parse import urlparse, parse_qs
 
 from pyserv.http.response import Response
 from pyserv.http.request import Request
 from pyserv.exceptions import HTTPException, ValidationError, PermissionDenied, NotFound, APIException
+
 from pyserv.pagination import Pagination, PageNumberPagination, LimitOffsetPagination
-from pyserv.models.base import BaseModel
-from pyserv.auth import login_required, permission_required
 
 
 class Serializer:

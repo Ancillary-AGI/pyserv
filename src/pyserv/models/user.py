@@ -1,5 +1,4 @@
-import uuid
-from typing import Optional, List, Dict, Any, Type, ClassVar, Union
+from typing import Optional, List, Dict, Any, Type, ClassVar
 from datetime import datetime, timezone
 from enum import Enum
 import hashlib
@@ -7,13 +6,13 @@ import bcrypt
 import re
 from email_validator import validate_email, EmailNotValidError
 
+
 from pyserv.models.base import BaseModel, ModelFactory
 from pyserv.utils.types import (
     Field, StringField, EmailField, BooleanField, DateTimeField,
-    IntegerField, UUIDField, PasswordField, EnumField, Relationship,
-    ForeignKeyField
+    IntegerField, UUIDField, EnumField, Relationship,
+    FieldType, RelationshipType
 )
-from pyserv.utils.types import FieldType, RelationshipType
 
 class UserRole(str, Enum):
     USER = "user"
@@ -502,7 +501,3 @@ Student = create_extended_user_model(
     },
     table_name='students'
 )
-
-
-
-

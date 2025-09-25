@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from pyserv.caching.cache_manager import CacheConfig
+
 @dataclass
 class CacheItem:
     key: str

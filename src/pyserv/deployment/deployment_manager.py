@@ -14,6 +14,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
+from pyserv.deployment.docker_manager import DockerManager
+from pyserv.deployment.kubernetes_manager import KubernetesManager
+from pyserv.deployment.deployment_monitor import DeploymentMonitor
+from pyserv.deployment.rollback_manager import RollbackManager
+
 class DeploymentStatus(Enum):
     PENDING = "pending"
     BUILDING = "building"

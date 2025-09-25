@@ -4,9 +4,9 @@ Contains database connection, configuration, and related utilities.
 """
 
 from pyserv.database.config import DatabaseConfig
-from pyserv.database.database_pool import PoolConfig, ConnectionStats, OptimizedDatabaseConnection
+from pyserv.database.database_pool import PoolConfig, ConnectionStats, DatabaseConnection
 
 # Import DatabaseConnection from the new module
-from pyserv.database.connection import DatabaseConnection
+from pyserv.database.connection import AbstractDatabaseConnection
 
-__all__ = ['DatabaseConnection', 'DatabaseConfig', 'PoolConfig', 'ConnectionStats', 'OptimizedDatabaseConnection']
+__all__ = ['AbstractDatabaseConnection', 'DatabaseConfig', 'PoolConfig', 'ConnectionStats']
