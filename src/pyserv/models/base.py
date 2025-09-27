@@ -5,7 +5,7 @@ Base model class for database operations.
 from typing import Dict, Optional, Any, Union, ClassVar
 from datetime import datetime
 
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.utils.types import Field, Relationship
 from pyserv.models.query import QueryBuilder

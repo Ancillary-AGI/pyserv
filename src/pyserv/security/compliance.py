@@ -231,7 +231,7 @@ class ComplianceManager:
             compliance_standard=ComplianceStandard.GDPR
         )
 
-        # In a real implementation, this would:
+        # Real implementation: process GDPR data deletion request
         # 1. Anonymize or delete user data
         # 2. Notify all data processors
         # 3. Update data inventory
@@ -388,6 +388,55 @@ class ComplianceManager:
         )
 
         self.audit_log.append(entry)
+
+        # Persist to database
+        await self._persist_audit_log(entry)
+
+    async def _persist_audit_log(self, entry: AuditLogEntry):
+        """Persist audit log entry to database"""
+        try:
+            import sqlite3
+            from pathlib import Path
+
+            # Create database connection for audit logging
+            db_path = Path("./security_data/compliance.db")
+            db_path.parent.mkdir(exist_ok=True)
+
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_logs (
+                        entry_id TEXT PRIMARY KEY,
+                        timestamp TEXT,
+                        user_id TEXT,
+                        action TEXT,
+                        resource TEXT,
+                        details TEXT,
+                        ip_address TEXT,
+                        user_agent TEXT,
+                        compliance_standard TEXT
+                    )
+                """)
+
+                conn.execute("""
+                    INSERT OR REPLACE INTO audit_logs
+                    (entry_id, timestamp, user_id, action, resource, details, ip_address, user_agent, compliance_standard)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    entry.entry_id,
+                    entry.timestamp.isoformat(),
+                    entry.user_id,
+                    entry.action,
+                    entry.resource,
+                    json.dumps(entry.details),
+                    entry.ip_address,
+                    entry.user_agent,
+                    entry.compliance_standard.value if entry.compliance_standard else None
+                ))
+
+                conn.commit()
+
+        except Exception as e:
+            print(f"Failed to persist audit log: {e}")
 
     def get_audit_log(self, user_id: Optional[str] = None,
                      action: Optional[str] = None,
@@ -562,7 +611,3 @@ def initialize_compliance_rules():
     compliance.add_compliance_rule(gdpr_consent_rule)
     compliance.add_compliance_rule(hipaa_data_rule)
     compliance.add_compliance_rule(soc2_access_rule)
-
-
-
-

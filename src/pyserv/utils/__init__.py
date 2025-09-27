@@ -7,8 +7,8 @@ and to eliminate code duplication. This module provides convenient access to all
 utility classes and functions.
 """
 
-# Import all utilities from the consolidated core module
-from pyserv.utilities import *
+# Core utilities are available through individual modules
+# Import utilities from submodules to avoid circular imports
 
 # Import advanced utilities
 from .advanced_math import AdvancedMathUtils

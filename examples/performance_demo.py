@@ -17,7 +17,7 @@ from typing import Dict, Any, Optional
 
 # PyServ imports
 from pyserv import Application
-from pyserv.database.database_pool import get_pooled_connection, PoolConfig
+from pyserv.database.connections import DatabaseConnection, PoolConfig
 from pyserv.caching import CacheManager, CacheConfig, cache_result
 from pyserv.performance import PerformanceMonitor, Profiler, benchmark
 from pyserv.monitoring import MonitoringManager, MonitoringConfig

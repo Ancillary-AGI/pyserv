@@ -1,5 +1,5 @@
 """
-Advanced profiling and benchmarking system for Pyserv  framework.
+Advanced profiling and benchmarking system for Pyserv framework.
 
 This module provides comprehensive performance profiling with:
 - CPU profiling and flame graphs
@@ -29,21 +29,7 @@ import json
 import csv
 from pathlib import Path
 
-from .monitoring.metrics import get_metrics_collector
-from .performance_optimizer import get_performance_monitor
-
-
-# Define init_profiling locally to avoid circular imports
-async def init_profiling():
-    """Initialize the profiling system"""
-    profiler = get_profiler()
-    load_tester = get_load_tester()
-    regression_detector = get_regression_detector()
-
-    # Start memory tracing
-    tracemalloc.start()
-
-    return profiler, load_tester, regression_detector
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -92,7 +78,6 @@ class PerformanceProfiler:
 
     def __init__(self):
         self.logger = logging.getLogger("PerformanceProfiler")
-        self.metrics = get_metrics_collector()
         self._active_profiles: Dict[str, cProfile.Profile] = {}
         self._memory_snapshots: Dict[str, tracemalloc.Snapshot] = {}
         self._executor = ThreadPoolExecutor(max_workers=4)
@@ -225,8 +210,17 @@ class PerformanceProfiler:
 
     def _store_profile_result(self, result: ProfileResult):
         """Store profiling result for analysis"""
-        # In a real implementation, this would store to database or file
-        pass
+        try:
+            # Store to database
+            self._store_to_database_sync(result)
+
+            # Store to file for backup
+            self._store_to_file_sync(result)
+
+        except Exception as e:
+            self.logger.error(f"Error storing profiling data: {e}")
+            # Fallback to file storage
+            self._store_to_file_sync(result)
 
     def generate_flame_graph(self, profile_data: str, output_file: str):
         """Generate flame graph from profile data"""
@@ -239,13 +233,85 @@ class PerformanceProfiler:
         except Exception as e:
             self.logger.error(f"Failed to generate flame graph: {e}")
 
+    def _store_to_database_sync(self, result: ProfileResult):
+        """Store profiling result to database (synchronous version)"""
+        try:
+            import sqlite3
+            from pathlib import Path
+
+            # Create database connection for profiling data
+            db_path = Path("./performance_data/profiling.db")
+            db_path.parent.mkdir(exist_ok=True)
+
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS profile_results (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        function_name TEXT,
+                        total_time REAL,
+                        call_count INTEGER,
+                        average_time REAL,
+                        cumulative_time REAL,
+                        memory_usage INTEGER,
+                        cpu_usage REAL,
+                        timestamp REAL
+                    )
+                """)
+
+                conn.execute("""
+                    INSERT INTO profile_results
+                    (function_name, total_time, call_count, average_time, cumulative_time, memory_usage, cpu_usage, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    result.function_name,
+                    result.total_time,
+                    result.call_count,
+                    result.average_time,
+                    result.cumulative_time,
+                    result.memory_usage,
+                    result.cpu_usage,
+                    result.timestamp
+                ))
+
+                conn.commit()
+
+            self.logger.info(f"Stored profile result to database: {result.function_name}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to store profile result to database: {e}")
+
+    def _store_to_file_sync(self, result: ProfileResult):
+        """Store profiling result to file (synchronous version)"""
+        try:
+            # Create profiles directory if it doesn't exist
+            profiles_dir = Path("profiles")
+            profiles_dir.mkdir(exist_ok=True)
+
+            # Save result to JSON file
+            result_file = profiles_dir / f"profile_{result.function_name}_{int(result.timestamp)}.json"
+            with open(result_file, 'w') as f:
+                json.dump({
+                    'function_name': result.function_name,
+                    'total_time': result.total_time,
+                    'call_count': result.call_count,
+                    'average_time': result.average_time,
+                    'cumulative_time': result.cumulative_time,
+                    'memory_usage': result.memory_usage,
+                    'cpu_usage': result.cpu_usage,
+                    'timestamp': result.timestamp
+                }, f, indent=2)
+
+            self.logger.info(f"Profile result saved to {result_file}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to store profile result to file: {e}")
+
 
 class LoadTester:
     """Advanced load testing system"""
 
     def __init__(self):
         self.logger = logging.getLogger("LoadTester")
-        self.metrics = get_metrics_collector()
         self._active_tests: Dict[str, asyncio.Task] = {}
 
     async def run_load_test(self, scenario: LoadTestScenario) -> BenchmarkResult:
@@ -590,7 +656,7 @@ def benchmark(iterations: int = 100, name: Optional[str] = None):
                 error_rate=0.0
             )
 
-            logging.info(f"Benchmark {func_name}: {result.operations_per_second:.2f} ops/sec")
+            logging.info(f"Benchmark {func_name}: {result.operations_per_second".2f"} ops/sec")
             return result
 
         if asyncio.iscoroutinefunction(func):
@@ -641,7 +707,3 @@ async def init_profiling():
 async def shutdown_profiling():
     """Shutdown the profiling system"""
     tracemalloc.stop()
-
-
-
-

@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 
 from pyserv.caching import CacheManager, MemoryCache, RedisCache, DatabaseCache
-from pyserv.database.database_pool import get_pooled_connection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.monitoring.metrics import get_metrics_collector
 
 
@@ -561,7 +561,3 @@ async def shutdown_distributed_cache():
     if _distributed_cache:
         await _distributed_cache.stop()
         _distributed_cache = None
-
-
-
-

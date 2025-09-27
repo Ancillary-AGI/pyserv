@@ -1,12 +1,26 @@
-from typing import List, Dict, Any, AsyncGenerator, Type, Optional, Tuple
+"""
+Real SQLite database connection implementation with full CRUD operations.
+"""
+
 import sqlite3
+import json
+import os
+import asyncio
+from typing import List, Dict, Any, AsyncGenerator, Type, Optional, Tuple, Union
 from contextlib import asynccontextmanager
-from pyserv.database.config import DatabaseConfig
-from pyserv.utils.types import Field, StringField, IntegerField, BooleanField, DateTimeField, FieldType
+from datetime import datetime
+import logging
+import threading
+from decimal import Decimal
+
+from ...config import DatabaseConfig
+from ...utils.types import Field, StringField, IntegerField, BooleanField, DateTimeField, FieldType
+
+logger = logging.getLogger(__name__)
 
 
-class SQLiteBackend:
-    """SQLite database backend"""
+class SQLiteConnection:
+    """SQLite database connection"""
 
     def __init__(self, config: DatabaseConfig):
         self.config = config
@@ -31,6 +45,47 @@ class SQLiteBackend:
         else:
             cursor.execute(query)
         return cursor
+
+    async def execute_raw(self, query: str, params: tuple = None) -> Any:
+        """Execute a raw query and return cursor for advanced usage (Django-like cursor API)."""
+        return await self.execute_query(query, params)
+
+    async def begin_transaction(self) -> Any:
+        """Begin SQLite transaction."""
+        cursor = self.connection.cursor()
+        cursor.execute("BEGIN")
+        return cursor
+
+    async def commit_transaction(self, transaction: Any) -> None:
+        """Commit SQLite transaction."""
+        self.connection.commit()
+
+    async def rollback_transaction(self, transaction: Any) -> None:
+        """Rollback SQLite transaction."""
+        self.connection.rollback()
+
+    async def execute_in_transaction(self, query: str, params: tuple = None) -> Any:
+        """Execute SQLite query within transaction context."""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("BEGIN")
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            self.connection.commit()
+            return cursor
+        except Exception as e:
+            self.connection.rollback()
+            raise e
+
+    async def _create_connection(self) -> Any:
+        """Create a new SQLite connection for pooling"""
+        import sqlite3
+        conn = sqlite3.connect(self.config.database)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
     async def create_table(self, model_class: Type) -> None:
         """Create a table for the model"""
@@ -167,9 +222,93 @@ class SQLiteBackend:
         agg_query = pipeline[0]
         if '$group' in agg_query:
             group_fields = agg_query['$group']
-            # This is a simplified implementation
-            # In a real implementation, you'd need more complex SQL generation
+        # Real aggregation implementation for SQLite
+        if not pipeline:
             return []
+
+        # Handle basic aggregation operations
+        results = []
+        agg_query = pipeline[0]
+
+        if '$group' in agg_query:
+            group_fields = agg_query['$group']
+
+            # Build GROUP BY clause
+            group_columns = []
+            for field, alias in group_fields.items():
+                if field != '_id':  # Skip _id field for now
+                    group_columns.append(field)
+
+            if group_columns:
+                # Build aggregation functions
+                select_parts = []
+                for field, alias in group_fields.items():
+                    if field == '_id':
+                        select_parts.append(f"{alias} as _id")
+                    else:
+                        select_parts.append(field)
+
+                # Add aggregation functions if specified
+                if '$sum' in agg_query:
+                    for field in agg_query['$sum']:
+                        select_parts.append(f"SUM({field}) as {field}_sum")
+
+                if '$count' in agg_query:
+                    select_parts.append("COUNT(*) as count")
+
+                if '$avg' in agg_query:
+                    for field in agg_query['$avg']:
+                        select_parts.append(f"AVG({field}) as {field}_avg")
+
+                if '$max' in agg_query:
+                    for field in agg_query['$max']:
+                        select_parts.append(f"MAX({field}) as {field}_max")
+
+                if '$min' in agg_query:
+                    for field in agg_query['$min']:
+                        select_parts.append(f"MIN({field}) as {field}_min")
+
+                # Build the query
+                select_clause = ', '.join(select_parts)
+                group_clause = ', '.join(group_columns)
+
+                query = f"SELECT {select_clause} FROM {model_class.get_table_name()} GROUP BY {group_clause}"
+
+                # Execute the query
+                cursor = await self.execute_query(query)
+                rows = cursor.fetchall()
+
+                # Convert to MongoDB-style aggregation result
+                for row in rows:
+                    result = {}
+                    for key, value in row.items():
+                        if key.endswith('_sum'):
+                            field = key[:-4]
+                            if '$sum' not in result:
+                                result['$sum'] = {}
+                            result['$sum'][field] = value
+                        elif key.endswith('_avg'):
+                            field = key[:-4]
+                            if '$avg' not in result:
+                                result['$avg'] = {}
+                            result['$avg'][field] = value
+                        elif key.endswith('_max'):
+                            field = key[:-4]
+                            if '$max' not in result:
+                                result['$max'] = {}
+                            result['$max'][field] = value
+                        elif key.endswith('_min'):
+                            field = key[:-4]
+                            if '$min' not in result:
+                                result['$min'] = {}
+                            result['$min'][field] = value
+                        elif key == 'count':
+                            result['count'] = value
+                        else:
+                            result[key] = value
+                    results.append(result)
+
+        return results
 
         return []
 

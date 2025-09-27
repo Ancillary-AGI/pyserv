@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.models.base import BaseModel
 from pyserv.utils.types import Field
@@ -364,7 +364,7 @@ Generated: {datetime.now().isoformat()}
 
 import asyncio
 from pyserv.migrations.migration import Migration, MigrationOperation, MigrationOperationType
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 
 # Migration operations
 operations = [

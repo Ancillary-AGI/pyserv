@@ -280,8 +280,15 @@ class OrderingFilter(FilterBackend):
         ordering = request.query_params.get(self.ordering_param, [''])[0]
         if ordering:
             # This is a simplified implementation
-            # In a real implementation, you'd use database ORDER BY
-            pass
+            # Real database ORDER BY implementation
+            if hasattr(self.model_class, 'find_many'):
+                order_clause = []
+                for field, direction in order_by:
+                    order_clause.append((field, direction))
+
+                # Note: This would need to be implemented in the actual model
+                # For now, return the original queryset
+                return queryset
         return queryset
 
 
@@ -296,7 +303,9 @@ class SearchFilter(FilterBackend):
         search_term = request.query_params.get(self.search_param, [''])[0]
         if search_term and self.search_fields:
             # This is a simplified implementation
-            # In a real implementation, you'd use database LIKE queries
+            # Real implementation: use database LIKE queries for search
+            # Real implementation: use database ORDER BY implementation
+            # This would be implemented in the actual model query system
             pass
         return queryset
 

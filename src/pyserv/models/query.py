@@ -13,9 +13,8 @@ from contextlib import asynccontextmanager
 import math
 import inspect
 
-from pyserv.database.database_pool import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
-from pyserv.database.backends import get_backend
+from pyserv.database.connections import DatabaseConnection
 from pyserv.utils.types import Field, Relationship, RelationshipType, OrderDirection, PaginatedResponse, AggregationResult, LazyLoad
 from pyserv.utils.collections import Collection
 

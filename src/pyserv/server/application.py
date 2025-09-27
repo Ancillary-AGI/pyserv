@@ -50,7 +50,8 @@ from pyserv.caching import get_cache_manager
 from pyserv.auth import get_security_manager
 
 # Database imports
-from pyserv.database import DatabaseConfig, AbstractDatabaseConnection
+from pyserv.database import DatabaseConfig
+from pyserv.database.connections import DatabaseConnection
 
 # Security middleware
 from pyserv.security.middleware import SecurityMiddleware, CSRFMiddleware
@@ -107,7 +108,7 @@ class Application:
         self.middleware_manager = MiddlewareManager()
         self.state: Dict[str, Any] = {}
         self.template_engine: Optional[TemplateEngine] = None
-        self.db_connection: Optional[AbstractDatabaseConnection] = None
+        self.db_connection: Optional[DatabaseConnection] = None
         self._startup_events: List[Callable] = []
         self._shutdown_events: List[Callable] = []
         self._exception_handlers: Dict[Type[Exception], Callable] = {}
@@ -256,7 +257,7 @@ class Application:
         # Initialize database
         if self.config.database_url:
             db_config = DatabaseConfig(self.config.database_url)
-            self.db_connection = AbstractDatabaseConnection.get_instance(db_config)
+            self.db_connection = DatabaseConnection.get_instance(db_config)
             await self.db_connection.connect()
         
         # Initialize template engine

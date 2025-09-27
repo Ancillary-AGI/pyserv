@@ -1,6 +1,6 @@
 """
 Migration runner and manager for Pyserv framework.
-Handles both database-stored and file-based migrations.
+Handles both database-stored and file-based migrations with comprehensive model diffing.
 """
 
 import asyncio
@@ -8,12 +8,13 @@ import json
 import logging
 import os
 import re
-from typing import Dict, List, Any, Optional, Tuple
+import hashlib
+from typing import Dict, List, Any, Optional, Tuple, Set
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
 
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.models.base import BaseModel
 from .migration import (
@@ -47,6 +48,7 @@ class Migrator:
         self.db_config = db_config
         self.applied_migrations: Dict[str, int] = {}  # model_name -> current_version
         self.migration_schemas: Dict[str, Dict[int, Any]] = {}  # model_name -> {version: schema_definition}
+        self.db_connection = None
 
     @classmethod
     def get_instance(cls, db_config: DatabaseConfig = None):

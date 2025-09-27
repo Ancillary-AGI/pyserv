@@ -5,8 +5,8 @@ from pyserv.database.config import DatabaseConfig
 from pyserv.utils.types import Field, StringField, IntegerField, BooleanField, DateTimeField, FieldType
 
 
-class MySQLBackend:
-    """MySQL database backend"""
+class MySQLConnection:
+    """MySQL database connection"""
 
     def __init__(self, config: DatabaseConfig):
         self.config = config
@@ -39,6 +39,46 @@ class MySQLBackend:
                 else:
                     await cursor.execute(query)
                 return cursor
+
+    async def execute_raw(self, query: str, params: tuple = None) -> Any:
+        """Execute a raw query and return cursor for advanced usage (Django-like cursor API)."""
+        async with self.pool.acquire() as connection:
+            async with connection.cursor(aiomysql.DictCursor) as cursor:
+                if params:
+                    await cursor.execute(query, params)
+                else:
+                    await cursor.execute(query)
+                return cursor
+
+    async def begin_transaction(self) -> Any:
+        """Begin MySQL transaction."""
+        async with self.pool.acquire() as connection:
+            await connection.begin()
+            return connection
+
+    async def commit_transaction(self, transaction: Any) -> None:
+        """Commit MySQL transaction."""
+        await transaction.commit()
+
+    async def rollback_transaction(self, transaction: Any) -> None:
+        """Rollback MySQL transaction."""
+        await transaction.rollback()
+
+    async def execute_in_transaction(self, query: str, params: tuple = None) -> Any:
+        """Execute MySQL query within transaction context."""
+        async with self.pool.acquire() as connection:
+            async with connection.cursor(aiomysql.DictCursor) as cursor:
+                try:
+                    await connection.begin()
+                    if params:
+                        await cursor.execute(query, params)
+                    else:
+                        await cursor.execute(query)
+                    await connection.commit()
+                    return cursor
+                except Exception as e:
+                    await connection.rollback()
+                    raise e
 
     async def create_table(self, model_class: Type) -> None:
         """Create a table for the model"""
@@ -159,6 +199,19 @@ class MySQLBackend:
                 await cursor.execute(query, tuple(filters.values()) if filters else None)
                 results = await cursor.fetchall()
                 return [dict(row) for row in results]
+
+    async def _create_connection(self) -> Any:
+        """Create a new MySQL connection for pooling"""
+        import aiomysql
+        params = self.config.get_connection_params()
+        return await aiomysql.connect(
+            host=params['host'],
+            port=params['port'],
+            user=params['user'],
+            password=params['password'],
+            db=params['database'],
+            autocommit=True
+        )
 
     async def count(self, model_class: Type, filters: Dict[str, Any]) -> int:
         """Count records matching filters"""

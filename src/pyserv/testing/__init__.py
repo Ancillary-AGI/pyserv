@@ -23,7 +23,7 @@ import pytest
 import pytest_asyncio
 
 from pyserv.database.config import DatabaseConfig
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.models.base import BaseModel
 
 

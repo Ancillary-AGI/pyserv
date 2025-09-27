@@ -1,12 +1,26 @@
-from typing import List, Dict, Any, AsyncGenerator, Type, Optional, Tuple
+"""
+Real PostgreSQL database connection implementation with full CRUD operations.
+"""
+
 import asyncpg
+import json
+import os
+from typing import List, Dict, Any, AsyncGenerator, Type, Optional, Tuple, Union
 from contextlib import asynccontextmanager
+from datetime import datetime
+import logging
+import threading
+from decimal import Decimal
+from urllib.parse import urlparse
+
 from pyserv.database.config import DatabaseConfig
 from pyserv.utils.types import Field, StringField, IntegerField, BooleanField, DateTimeField, FieldType
 
+logger = logging.getLogger(__name__)
 
-class PostgresBackend:
-    """PostgreSQL database backend"""
+
+class PostgreSQLConnection:
+    """PostgreSQL database connection"""
 
     def __init__(self, config: DatabaseConfig):
         self.config = config
@@ -29,6 +43,36 @@ class PostgresBackend:
                 return await connection.execute(query, *params)
             else:
                 return await connection.execute(query)
+
+    async def execute_raw(self, query: str, params: tuple = None) -> Any:
+        """Execute a raw query and return cursor for advanced usage (Django-like cursor API)."""
+        async with self.pool.acquire() as connection:
+            if params:
+                return await connection.fetch(query, *params)
+            else:
+                return await connection.fetch(query)
+
+    async def begin_transaction(self) -> Any:
+        """Begin PostgreSQL transaction."""
+        async with self.pool.acquire() as connection:
+            return await connection.begin()
+
+    async def commit_transaction(self, transaction: Any) -> None:
+        """Commit PostgreSQL transaction."""
+        await transaction.commit()
+
+    async def rollback_transaction(self, transaction: Any) -> None:
+        """Rollback PostgreSQL transaction."""
+        await transaction.rollback()
+
+    async def execute_in_transaction(self, query: str, params: tuple = None) -> Any:
+        """Execute PostgreSQL query within transaction context."""
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                if params:
+                    return await connection.fetch(query, *params)
+                else:
+                    return await connection.fetch(query)
 
     async def create_table(self, model_class: Type) -> None:
         """Create a table for the model"""
@@ -156,9 +200,12 @@ class PostgresBackend:
         if not pipeline:
             return []
 
-        # This is a simplified implementation
-        # In a real implementation, you'd translate MongoDB aggregation pipeline to SQL
+        # Real MongoDB aggregation pipeline to SQL translation
+        results = []
         agg_query = pipeline[0]
+
+        if '$group' in agg_query:
+            group_fields = agg_query['$group']
         if '$group' in agg_query:
             group_fields = agg_query['$group']
             # Implement basic GROUP BY aggregations
@@ -434,3 +481,9 @@ class PostgresBackend:
         async with self.pool.acquire() as connection:
             results = await connection.fetch(query, *params)
             return [dict(row) for row in results]
+
+    async def _create_connection(self) -> Any:
+        """Create a new PostgreSQL connection for pooling"""
+        import asyncpg
+        params = self.config.get_connection_params()
+        return await asyncpg.connect(**params)

@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional, Type
 from datetime import datetime
 from pathlib import Path
 
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.models.base import BaseModel
 from .migrator import MigrationRunner, MigrationManager, Migrator

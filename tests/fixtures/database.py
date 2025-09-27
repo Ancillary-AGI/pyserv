@@ -5,7 +5,7 @@ from typing import AsyncGenerator
 
 import pytest
 
-from pyserv.database.database_pool import DatabaseConnection
+from pyserv.database.connections import DatabaseConnection
 from pyserv.database.config import DatabaseConfig
 from pyserv.models.base import BaseModel
 

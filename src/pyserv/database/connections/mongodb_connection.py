@@ -7,8 +7,8 @@ from pyserv.database.config import DatabaseConfig
 from pyserv.utils.types import Field
 
 
-class MongoDBBackend:
-    """MongoDB database backend"""
+class MongoDBConnection:
+    """MongoDB database connection"""
 
     def __init__(self, config: DatabaseConfig):
         self.config = config
@@ -36,6 +36,44 @@ class MongoDBBackend:
         """Execute a query (not applicable for MongoDB - placeholder)"""
         # MongoDB doesn't use SQL queries, so this is a no-op
         return None
+
+    async def execute_raw(self, query: str, params: tuple = None) -> Any:
+        """Execute a raw MongoDB command and return results for advanced usage."""
+        # For MongoDB, we can execute raw commands or return collection cursor
+        if hasattr(self, 'db') and self.db:
+            if params and isinstance(params, dict):
+                return await self.db.command(query, **params)
+            else:
+                return await self.db.command(query)
+        return None
+
+    async def begin_transaction(self) -> Any:
+        """Begin MongoDB transaction."""
+        if hasattr(self, 'client') and self.client:
+            return await self.client.start_session()
+
+    async def commit_transaction(self, transaction: Any) -> None:
+        """Commit MongoDB transaction."""
+        await transaction.commit_transaction()
+
+    async def rollback_transaction(self, transaction: Any) -> None:
+        """Rollback MongoDB transaction."""
+        await transaction.abort_transaction()
+
+    async def execute_in_transaction(self, query: str, params: tuple = None) -> Any:
+        """Execute MongoDB command within transaction context."""
+        if hasattr(self, 'client') and self.client:
+            async with await self.client.start_session() as session:
+                async with session.start_transaction():
+                    try:
+                        if params and isinstance(params, dict):
+                            result = await self.db.command(query, **params, session=session)
+                        else:
+                            result = await self.db.command(query, session=session)
+                        return result
+                    except Exception as e:
+                        await session.abort_transaction()
+                        raise e
 
     async def create_table(self, model_class: Type) -> None:
         """Create indexes for the model (MongoDB collections are created automatically)"""
@@ -187,6 +225,18 @@ class MongoDBBackend:
                 mongo_data[key] = value
 
         return mongo_data
+
+    async def _create_connection(self) -> Any:
+        """Create a new MongoDB connection for pooling"""
+        from motor.motor_asyncio import AsyncIOMotorClient
+        params = self.config.get_connection_params()
+        return AsyncIOMotorClient(
+            host=params['host'],
+            port=params['port'],
+            username=params['username'],
+            password=params['password'],
+            authSource=params['authSource']
+        )
 
     async def get_collection(self, model_class: Type) -> Any:
         """Get the collection for a model"""

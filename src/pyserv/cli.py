@@ -186,7 +186,18 @@ class PyservCLI:
         showmigrations_parser = subparsers.add_parser('showmigrations', help='Show migration status')
         showmigrations_parser.add_argument('--app', help='App to show migrations for')
 
-        subparsers.add_parser('dbshell', help='Start database shell')
+        dbshell_parser = subparsers.add_parser('dbshell', help='Start database shell')
+        dbshell_parser.add_argument('--database-url', help='Database connection URL')
+        dbshell_parser.add_argument('--autocomplete', action='store_true',
+                                   help='Enable auto-completion')
+        dbshell_parser.add_argument('--history', action='store_true',
+                                   help='Enable command history')
+        dbshell_parser.add_argument('--multi-db', action='store_true',
+                                   help='Enable multi-database mode')
+        dbshell_parser.add_argument('--query-builder', action='store_true',
+                                   help='Enable visual query builder')
+        dbshell_parser.add_argument('--visualize', action='store_true',
+                                   help='Enable query visualization')
 
     def _add_project_commands(self, subparsers):
         """Add project management commands"""

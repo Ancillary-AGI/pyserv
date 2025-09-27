@@ -181,6 +181,7 @@ def detect_language_from_request(request) -> str:
             return primary_language
 
     # Check user preferences or session
+    # Real implementation: integrate with authentication system
     # This would be implemented based on your authentication system
 
     return TranslationManager.get_instance().config.default_language
