@@ -6,8 +6,7 @@ High-performance mathematical functions and algorithms
 import math
 import cmath
 import statistics
-import numpy as np
-from typing import List, Tuple, Union, Optional, Callable, Any
+from typing import List, Tuple, Union, Optional, Callable, Any, Dict
 from decimal import Decimal, getcontext
 from functools import lru_cache, reduce
 import operator
@@ -15,7 +14,7 @@ from itertools import combinations, permutations
 from collections import Counter, defaultdict
 
 
-class AdvancedMathUtils:
+class MathematicalOperations:
     """Advanced mathematical utilities with high performance"""
 
     @staticmethod
@@ -82,7 +81,7 @@ class AdvancedMathUtils:
         if a == 0:
             return b, 0, 1
 
-        gcd, x1, y1 = AdvancedMathUtils.gcd_extended(b % a, a)
+        gcd, x1, y1 = MathematicalOperations.gcd_extended(b % a, a)
         x = y1 - (b // a) * x1
         y = x1
 
@@ -91,7 +90,7 @@ class AdvancedMathUtils:
     @staticmethod
     def modular_inverse(a: int, m: int) -> int:
         """Calculate modular inverse using extended Euclidean algorithm"""
-        gcd, x, y = AdvancedMathUtils.gcd_extended(a, m)
+        gcd, x, y = MathematicalOperations.gcd_extended(a, m)
         if gcd != 1:
             raise ValueError("Modular inverse does not exist")
         return (x % m + m) % m
@@ -108,7 +107,7 @@ class AdvancedMathUtils:
         result = 0
         for ai, mi in zip(a, m):
             Mi = M // mi
-            inv = AdvancedMathUtils.modular_inverse(Mi, mi)
+            inv = MathematicalOperations.modular_inverse(Mi, mi)
             result += ai * Mi * inv
 
         return result % M
@@ -143,14 +142,14 @@ class AdvancedMathUtils:
         det = 0
         for j in range(n):
             sub_matrix = [row[:j] + row[j+1:] for row in matrix[1:]]
-            det += ((-1) ** j) * matrix[0][j] * AdvancedMathUtils.matrix_determinant(sub_matrix)
+            det += ((-1) ** j) * matrix[0][j] * MathematicalOperations.matrix_determinant(sub_matrix)
 
         return det
 
     @staticmethod
     def matrix_inverse(matrix: List[List[float]]) -> List[List[float]]:
         """Calculate matrix inverse"""
-        det = AdvancedMathUtils.matrix_determinant(matrix)
+        det = MathematicalOperations.matrix_determinant(matrix)
         if det == 0:
             raise ValueError("Matrix is singular")
 
@@ -161,7 +160,7 @@ class AdvancedMathUtils:
             for j in range(n):
                 # Calculate cofactor
                 sub_matrix = [row[:j] + row[j+1:] for row in (matrix[:i] + matrix[i+1:])]
-                cofactor = ((-1) ** (i + j)) * AdvancedMathUtils.matrix_determinant(sub_matrix)
+                cofactor = ((-1) ** (i + j)) * MathematicalOperations.matrix_determinant(sub_matrix)
                 adjugate[j][i] = cofactor  # Transpose
 
         return [[adjugate[i][j] / det for j in range(n)] for i in range(n)]
@@ -206,7 +205,14 @@ class AdvancedMathUtils:
     @staticmethod
     def polynomial_roots(coefficients: List[float]) -> List[complex]:
         """Find roots of polynomial using numpy"""
-        return np.roots(coefficients).tolist()
+        try:
+            import numpy as np
+            return np.roots(coefficients).tolist()
+        except ImportError:
+            raise ImportError(
+                "numpy is required for polynomial_roots. "
+                "Install with: pip install numpy"
+            )
 
     @staticmethod
     def numerical_integration(func: Callable[[float], float], a: float, b: float,
@@ -249,11 +255,21 @@ class AdvancedMathUtils:
     def monte_carlo_integration(func: Callable[[float], float], a: float, b: float,
                                num_samples: int = 10000) -> float:
         """Monte Carlo integration"""
-        total = 0
-        for _ in range(num_samples):
-            x = a + (b - a) * np.random.random()
-            total += func(x)
-        return (b - a) * total / num_samples
+        try:
+            import numpy as np
+            total = 0
+            for _ in range(num_samples):
+                x = a + (b - a) * np.random.random()
+                total += func(x)
+            return (b - a) * total / num_samples
+        except ImportError:
+            # Fallback to standard library
+            import random
+            total = 0
+            for _ in range(num_samples):
+                x = a + (b - a) * random.random()
+                total += func(x)
+            return (b - a) * total / num_samples
 
     @staticmethod
     def fast_fourier_transform(signal: List[complex]) -> List[complex]:
@@ -263,8 +279,8 @@ class AdvancedMathUtils:
             return signal
 
         # Split into even and odd
-        even = AdvancedMathUtils.fast_fourier_transform(signal[::2])
-        odd = AdvancedMathUtils.fast_fourier_transform(signal[1::2])
+        even = MathematicalOperations.fast_fourier_transform(signal[::2])
+        odd = MathematicalOperations.fast_fourier_transform(signal[1::2])
 
         # Combine
         result = [0] * n

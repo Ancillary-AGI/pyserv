@@ -44,7 +44,7 @@ class WebSocket:
         })
         self.connected = True
     
-    async def receive(self) -> Dict[str, Any]:
+    async def receive_message(self) -> Dict[str, Any]:
         """Receive a WebSocket message"""
         if not self.connected:
             raise WebSocketException("WebSocket is not connected")
@@ -59,14 +59,14 @@ class WebSocket:
     
     async def receive_text(self) -> str:
         """Receive text message"""
-        message = await self.receive()
+        message = await self.receive_message()
         if message["type"] != "websocket.receive" or "text" not in message:
             raise WebSocketException("Expected text message")
         return message["text"]
     
     async def receive_bytes(self) -> bytes:
         """Receive binary message"""
-        message = await self.receive()
+        message = await self.receive_message()
         if message["type"] != "websocket.receive" or "bytes" not in message:
             raise WebSocketException("Expected binary message")
         return message["bytes"]

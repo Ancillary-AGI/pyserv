@@ -10,6 +10,9 @@ import asyncio
 import json
 import hashlib
 from enum import Enum
+import logging
+from pyserv.database.connections import DatabaseConnection
+from pyserv.database.config import DatabaseConfig
 
 
 class ComplianceStandard(Enum):
@@ -134,11 +137,21 @@ class AuditLogEntry:
 class ComplianceManager:
     """Compliance management system"""
 
-    def __init__(self):
+    def __init__(self, db_config: Optional[DatabaseConfig] = None):
         self.rules: Dict[str, ComplianceRule] = {}
         self.data_subjects: Dict[str, DataSubject] = {}
         self.audit_log: List[AuditLogEntry] = []
         self.data_inventory: Dict[str, Dict[str, Any]] = {}
+        
+        # Database connection for audit logging
+        if db_config:
+            self.db_connection = DatabaseConnection.get_instance(db_config)
+        else:
+            # Default SQLite for compliance data
+            default_config = DatabaseConfig("sqlite:///compliance.db")
+            self.db_connection = DatabaseConnection.get_instance(default_config)
+        
+        self.logger = logging.getLogger("ComplianceManager")
 
     def add_compliance_rule(self, rule: ComplianceRule):
         """Add compliance rule"""
@@ -395,48 +408,27 @@ class ComplianceManager:
     async def _persist_audit_log(self, entry: AuditLogEntry):
         """Persist audit log entry to database"""
         try:
-            import sqlite3
-            from pathlib import Path
-
-            # Create database connection for audit logging
-            db_path = Path("./security_data/compliance.db")
-            db_path.parent.mkdir(exist_ok=True)
-
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS audit_logs (
-                        entry_id TEXT PRIMARY KEY,
-                        timestamp TEXT,
-                        user_id TEXT,
-                        action TEXT,
-                        resource TEXT,
-                        details TEXT,
-                        ip_address TEXT,
-                        user_agent TEXT,
-                        compliance_standard TEXT
-                    )
-                """)
-
-                conn.execute("""
-                    INSERT OR REPLACE INTO audit_logs
-                    (entry_id, timestamp, user_id, action, resource, details, ip_address, user_agent, compliance_standard)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    entry.entry_id,
-                    entry.timestamp.isoformat(),
-                    entry.user_id,
-                    entry.action,
-                    entry.resource,
-                    json.dumps(entry.details),
-                    entry.ip_address,
-                    entry.user_agent,
-                    entry.compliance_standard.value if entry.compliance_standard else None
-                ))
-
-                conn.commit()
+            # Ensure tables exist
+            await self._create_audit_tables()
+            
+            await self.db_connection.execute("""
+                INSERT OR REPLACE INTO audit_logs
+                (entry_id, timestamp, user_id, action, resource, details, ip_address, user_agent, compliance_standard)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                entry.entry_id,
+                entry.timestamp.isoformat(),
+                entry.user_id,
+                entry.action,
+                entry.resource,
+                json.dumps(entry.details),
+                entry.ip_address,
+                entry.user_agent,
+                entry.compliance_standard.value if entry.compliance_standard else None
+            ))
 
         except Exception as e:
-            print(f"Failed to persist audit log: {e}")
+            self.logger.error(f"Failed to persist audit log: {e}")
 
     def get_audit_log(self, user_id: Optional[str] = None,
                      action: Optional[str] = None,
@@ -480,6 +472,38 @@ class ComplianceManager:
         """Get data inventory"""
         return self.data_inventory
 
+    async def _create_audit_tables(self):
+        """Create audit logging tables"""
+        try:
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    entry_id TEXT PRIMARY KEY,
+                    timestamp TEXT,
+                    user_id TEXT,
+                    action TEXT,
+                    resource TEXT,
+                    details TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    compliance_standard TEXT
+                )
+            """)
+            
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS data_subjects (
+                    subject_id TEXT PRIMARY KEY,
+                    email TEXT,
+                    name TEXT,
+                    data_types TEXT,
+                    consent_given BOOLEAN,
+                    consent_date TEXT,
+                    consent_withdrawn BOOLEAN,
+                    withdrawal_date TEXT
+                )
+            """)
+        except Exception as e:
+            self.logger.error(f"Failed to create audit tables: {e}")
+
     def update_data_asset(self, asset_id: str, **updates):
         """Update data asset"""
         if asset_id in self.data_inventory:
@@ -490,11 +514,11 @@ class ComplianceManager:
 # Global compliance manager instance
 _compliance_manager = None
 
-def get_compliance_manager() -> ComplianceManager:
+def get_compliance_manager(db_config: Optional[DatabaseConfig] = None) -> ComplianceManager:
     """Get global compliance manager instance"""
     global _compliance_manager
     if _compliance_manager is None:
-        _compliance_manager = ComplianceManager()
+        _compliance_manager = ComplianceManager(db_config)
     return _compliance_manager
 
 

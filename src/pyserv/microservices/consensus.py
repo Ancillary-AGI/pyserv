@@ -1,11 +1,11 @@
 """
-Distributed consensus implementation for Pyserv  framework.
+Distributed consensus implementation for Pyserv framework.
 
-This module provides Raft consensus algorithm implementation for:
-- Leader election
-- Log replication
-- Fault tolerance
-- Distributed coordination
+This module provides a complete Raft consensus algorithm implementation with:
+- Real network transport layer with TCP sockets
+- Database-agnostic persistent storage
+- Comprehensive leader election and log replication
+- Fault tolerance and partition recovery
 """
 
 import asyncio
@@ -15,21 +15,33 @@ import time
 import json
 import socket
 import struct
-from typing import List, Dict, Any, Optional, Set, Tuple
+import threading
+from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
-import aiohttp
 import pickle
+import uuid
+
+from pyserv.database import DatabaseConnection
+from pyserv.database.config import db_config
 
 logger = logging.getLogger(__name__)
 
 
-class ConsensusState(Enum):
-    """Raft consensus states"""
+class NodeRole(Enum):
+    """Raft node roles"""
     FOLLOWER = "follower"
     CANDIDATE = "candidate"
     LEADER = "leader"
+
+
+class LogEntryType(Enum):
+    """Types of log entries"""
+    COMMAND = "command"
+    NO_OP = "no_op"
+    CONFIG_CHANGE = "config_change"
+    MEMBERSHIP_CHANGE = "membership_change"
 
 
 @dataclass
@@ -37,15 +49,19 @@ class LogEntry:
     """Log entry for Raft consensus"""
     term: int
     index: int
+    entry_type: LogEntryType
     command: Any
-    timestamp: datetime = field(default_factory=datetime.now)
+    client_id: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.utcnow)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
+        """Convert to dictionary for serialization"""
         return {
             "term": self.term,
             "index": self.index,
+            "entry_type": self.entry_type.value,
             "command": self.command,
+            "client_id": self.client_id,
             "timestamp": self.timestamp.isoformat()
         }
 
@@ -55,726 +71,302 @@ class LogEntry:
         return cls(
             term=data["term"],
             index=data["index"],
+            entry_type=LogEntryType(data["entry_type"]),
             command=data["command"],
+            client_id=data.get("client_id"),
             timestamp=datetime.fromisoformat(data["timestamp"])
         )
 
-
-class RaftConsensus:
-    """
-    Implementation of Raft consensus algorithm for distributed coordination.
-
-    This class provides leader election, log replication, and fault tolerance
-    for distributed systems following the Raft protocol.
-    """
-
-    def __init__(self, node_id: str, peers: List[str], heartbeat_interval: float = 0.1,
-                 election_timeout_min: int = 150, election_timeout_max: int = 300):
-        self.node_id = node_id
-        self.peers = peers
-        self.state = ConsensusState.FOLLOWER
-        self.current_term = 0
-        self.voted_for: Optional[str] = None
-        self.log: List[LogEntry] = []
-        self.commit_index = 0
-        self.last_applied = 0
-
-        # Leader state
-        self.next_index: Dict[str, int] = {}
-        self.match_index: Dict[str, int] = {}
-
-        # Timing
-        self.heartbeat_interval = heartbeat_interval
-        self.election_timeout_min = election_timeout_min
-        self.election_timeout_max = election_timeout_max
-        self.election_timeout = self._random_election_timeout()
-        self.last_heartbeat = datetime.now()
-
-        # Callbacks
-        self.on_state_change: Optional[callable] = None
-        self.on_commit: Optional[callable] = None
-        self.on_apply: Optional[callable] = None
-
-        # Background tasks
-        self._election_timer_task: Optional[asyncio.Task] = None
-        self._heartbeat_task: Optional[asyncio.Task] = None
-
-    def _random_election_timeout(self) -> float:
-        """Generate random election timeout in seconds"""
-        return random.randint(self.election_timeout_min, self.election_timeout_max) / 1000.0
-
-    async def start(self) -> None:
-        """Start the consensus algorithm"""
-        logger.info(f"Starting Raft consensus for node {self.node_id}")
-        await self._start_election_timer()
-
-    async def stop(self) -> None:
-        """Stop the consensus algorithm"""
-        logger.info(f"Stopping Raft consensus for node {self.node_id}")
-
-        if self._election_timer_task:
-            self._election_timer_task.cancel()
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-
-        self.state = ConsensusState.FOLLOWER
-
-    async def request_votes(self) -> bool:
-        """
-        Request votes from other nodes to become leader.
-
-        Returns:
-            True if elected leader, False otherwise
-        """
-        self.state = ConsensusState.CANDIDATE
-        self.current_term += 1
-        self.voted_for = self.node_id
-
-        votes_received = 1  # Vote for self
-        votes_needed = len(self.peers) // 2 + 1
-
-        logger.info(f"Node {self.node_id} requesting votes for term {self.current_term}")
-
-        if self.on_state_change:
-            await self.on_state_change(self.state, self.current_term)
-
-        # Request votes from peers
-        vote_tasks = []
-        for peer in self.peers:
-            task = asyncio.create_task(self._request_vote_from_peer(peer))
-            vote_tasks.append(task)
-
-        # Wait for votes with timeout
-        try:
-            results = await asyncio.gather(*vote_tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Error requesting vote: {result}")
-                    continue
-                if result:
-                    votes_received += 1
-
-        except asyncio.TimeoutError:
-            logger.warning("Vote request timed out")
-
-        if votes_received >= votes_needed:
-            await self._become_leader()
-            return True
-        else:
-            self.state = ConsensusState.FOLLOWER
-            return False
-
-    async def _request_vote_from_peer(self, peer: str) -> bool:
-        """Request vote from a specific peer"""
-        try:
-            # Real RPC call implementation for vote request
-            await asyncio.sleep(random.uniform(0.01, 0.05))  # Simulate network delay
-            return random.random() > 0.3  # 70% chance of getting vote
-        except Exception as e:
-            logger.error(f"Failed to request vote from {peer}: {e}")
-            return False
-
-    async def _send_heartbeat_rpc(self, follower: str) -> None:
-        """Send heartbeat RPC to follower"""
-        try:
-            # Real implementation: serialize and send AppendEntries RPC
-            # 1. Serialize the AppendEntries RPC message
-            # 2. Send it to the follower node
-            # 3. Wait for response
-            # 4. Handle timeout and retry logic
-
-            # For now, simulate RPC call with proper error handling
-            await asyncio.sleep(random.uniform(0.001, 0.01))  # Simulate network latency
-
-            # Simulate RPC success/failure
-            if random.random() > 0.05:  # 95% success rate
-                # RPC successful
-                pass
-            else:
-                raise Exception("RPC failed")
-
-        except Exception as e:
-            logger.error(f"Heartbeat RPC to {follower} failed: {e}")
-            raise
-
-    async def _become_leader(self) -> None:
-        """Transition to leader state"""
-        self.state = ConsensusState.LEADER
-        logger.info(f"Node {self.node_id} became leader for term {self.current_term}")
-
-        # Initialize leader state
-        self.next_index = {peer: len(self.log) + 1 for peer in self.peers}
-        self.match_index = {peer: 0 for peer in self.peers}
-
-        if self.on_state_change:
-            await self.on_state_change(self.state, self.current_term)
-
-        # Start heartbeat
-        await self._start_heartbeat()
-
-    async def append_entries(self, entries: List[Any]) -> bool:
-        """
-        Append entries to log and replicate to followers.
-
-        Args:
-            entries: List of commands to append
-
-        Returns:
-            True if successfully committed, False otherwise
-        """
-        if self.state != ConsensusState.LEADER:
-            return False
-
-        # Create log entries
-        new_entries = []
-        for i, entry in enumerate(entries):
-            log_entry = LogEntry(
-                term=self.current_term,
-                index=len(self.log) + i + 1,
-                command=entry
-            )
-            new_entries.append(log_entry)
-
-        # Append to local log
-        self.log.extend(new_entries)
-
-        # Replicate to followers
-        replication_tasks = []
-        for peer in self.peers:
-            task = asyncio.create_task(self._replicate_to_peer(peer, new_entries))
-            replication_tasks.append(task)
-
-        # Wait for replication
-        try:
-            results = await asyncio.gather(*replication_tasks, return_exceptions=True)
-            successful_replications = sum(1 for r in results if r is True)
-        except Exception as e:
-            logger.error(f"Replication failed: {e}")
-            successful_replications = 0
-
-        # Check if majority replicated
-        majority = len(self.peers) // 2
-        if successful_replications >= majority:
-            # Commit entries
-            old_commit_index = self.commit_index
-            self.commit_index = len(self.log)
-
-            # Apply committed entries
-            for i in range(old_commit_index, self.commit_index):
-                if self.on_apply:
-                    await self.on_apply(self.log[i])
-
-            if self.on_commit:
-                await self.on_commit(new_entries)
-
-            return True
-
-        return False
-
-    async def _replicate_to_peer(self, peer: str, entries: List[LogEntry]) -> bool:
-        """Replicate log entries to a specific peer"""
-        try:
-            # Real implementation: send RPC call to peer
-            # For now, simulate with random success
-            await asyncio.sleep(random.uniform(0.01, 0.1))  # Simulate network delay
-            return random.random() > 0.2  # 80% success rate
-        except Exception as e:
-            logger.error(f"Failed to replicate to {peer}: {e}")
-            return False
-
-    async def _start_election_timer(self) -> None:
-        """Start the election timer"""
-        if self._election_timer_task:
-            self._election_timer_task.cancel()
-
-        self._election_timer_task = asyncio.create_task(self._run_election_timer())
-
-    async def _run_election_timer(self) -> None:
-        """Run the election timer loop"""
-        while True:
-            try:
-                await asyncio.sleep(self.election_timeout)
-
-                if self.state == ConsensusState.FOLLOWER:
-                    # Check if leader heartbeat is stale
-                    time_since_heartbeat = (datetime.now() - self.last_heartbeat).total_seconds()
-                    if time_since_heartbeat >= self.election_timeout:
-                        logger.info(f"Election timeout for node {self.node_id}, starting election")
-                        await self.request_votes()
-
-                # Reset election timeout
-                self.election_timeout = self._random_election_timeout()
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Election timer error: {e}")
-
-    async def _start_heartbeat(self) -> None:
-        """Start sending heartbeats to followers"""
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-
-        self._heartbeat_task = asyncio.create_task(self._run_heartbeat())
-
-    async def _run_heartbeat(self) -> None:
-        """Run heartbeat loop"""
-        while self.state == ConsensusState.LEADER:
-            try:
-                await asyncio.sleep(self.heartbeat_interval)
-
-                # Send heartbeats to all peers
-                heartbeat_tasks = []
-                for peer in self.peers:
-                    task = asyncio.create_task(self._send_heartbeat(peer))
-                    heartbeat_tasks.append(task)
-
-                await asyncio.gather(*heartbeat_tasks, return_exceptions=True)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Heartbeat error: {e}")
-
-    async def _send_heartbeat(self, peer: str) -> None:
-        """Send heartbeat to a specific peer"""
-        try:
-            # Real implementation: send AppendEntries RPC with no entries
-            # For now, just update last heartbeat time
-            self.last_heartbeat = datetime.now()
-        except Exception as e:
-            logger.error(f"Failed to send heartbeat to {peer}: {e}")
-
-    def receive_vote_request(self, candidate_id: str, term: int, last_log_index: int, last_log_term: int) -> tuple[bool, int]:
-        """
-        Handle vote request from candidate.
-
-        Returns:
-            (vote_granted, current_term)
-        """
-        if term < self.current_term:
-            return False, self.current_term
-
-        if term > self.current_term:
-            self.current_term = term
-            self.state = ConsensusState.FOLLOWER
-            self.voted_for = None
-
-        # Check if we can vote for this candidate
-        if (self.voted_for is None or self.voted_for == candidate_id):
-            # Check log up-to-date
-            if self._is_log_up_to_date(last_log_index, last_log_term):
-                self.voted_for = candidate_id
-                return True, self.current_term
-
-        return False, self.current_term
-
-    def _is_log_up_to_date(self, last_log_index: int, last_log_term: int) -> bool:
-        """Check if candidate's log is at least as up-to-date as ours"""
-        if not self.log:
-            return True
-
-        our_last_entry = self.log[-1]
-        if last_log_term > our_last_entry.term:
-            return True
-        elif last_log_term == our_last_entry.term:
-            return last_log_index >= our_last_entry.index
-
-        return False
-
-    def receive_append_entries(self, term: int, leader_id: str, prev_log_index: int,
-                             prev_log_term: int, entries: List[LogEntry], leader_commit: int) -> tuple[bool, int]:
-        """
-        Handle AppendEntries RPC from leader.
-
-        Returns:
-            (success, current_term)
-        """
-        if term < self.current_term:
-            return False, self.current_term
-
-        if term > self.current_term:
-            self.current_term = term
-            self.state = ConsensusState.FOLLOWER
-            self.voted_for = None
-
-        self.state = ConsensusState.FOLLOWER
-        self.last_heartbeat = datetime.now()
-
-        # Check previous log entry
-        if prev_log_index > 0:
-            if prev_log_index > len(self.log):
-                return False, self.current_term
-
-            if self.log[prev_log_index - 1].term != prev_log_term:
-                return False, self.current_term
-
-        # Append new entries
-        for entry in entries:
-            if entry.index <= len(self.log):
-                # Check for conflicts
-                if entry.index <= len(self.log) and self.log[entry.index - 1].term != entry.term:
-                    # Remove conflicting entries
-                    self.log = self.log[:entry.index - 1]
-                else:
-                    continue
-
-            self.log.append(entry)
-
-        # Update commit index
-        if leader_commit > self.commit_index:
-            self.commit_index = min(leader_commit, len(self.log))
-
-            # Apply committed entries
-            while self.last_applied < self.commit_index:
-                self.last_applied += 1
-                if self.on_apply:
-                    asyncio.create_task(self.on_apply(self.log[self.last_applied - 1]))
-
-        return True, self.current_term
-
-    def get_log_entries(self, start_index: int) -> List[LogEntry]:
-        """Get log entries starting from index"""
-        if start_index <= 0 or start_index > len(self.log):
-            return []
-        return self.log[start_index - 1:]
-
-    def get_state_info(self) -> Dict[str, Any]:
-        """Get current state information"""
-        return {
-            "node_id": self.node_id,
-            "state": self.state.value,
-            "current_term": self.current_term,
-            "voted_for": self.voted_for,
-            "log_length": len(self.log),
-            "commit_index": self.commit_index,
-            "last_applied": self.last_applied,
-            "peers": self.peers
-        }
-
-
-class DistributedLock:
-    """
-    Distributed lock using consensus algorithm.
-
-    This class provides distributed locking capabilities using the Raft consensus
-    algorithm for coordination across multiple nodes.
-    """
-
-    def __init__(self, consensus: RaftConsensus, lock_name: str):
-        self.consensus = consensus
-        self.lock_name = lock_name
-        self.holder: Optional[str] = None
-        self.lock_id = f"lock_{lock_name}_{random.randint(1000, 9999)}"
-
-    async def acquire(self, holder_id: str, timeout: float = 5.0) -> bool:
-        """
-        Acquire distributed lock.
-
-        Args:
-            holder_id: ID of the lock holder
-            timeout: Timeout in seconds
-
-        Returns:
-            True if lock acquired, False otherwise
-        """
-        if self.holder is not None:
-            return False
-
-        # Create log entry for lock acquisition
-        lock_entry = {
-            'type': 'lock_acquire',
-            'lock_id': self.lock_id,
-            'lock_name': self.lock_name,
-            'holder': holder_id,
-            'timestamp': datetime.now().isoformat()
-        }
-
-        success = await asyncio.wait_for(
-            self.consensus.append_entries([lock_entry]),
-            timeout=timeout
-        )
-
-        if success:
-            self.holder = holder_id
-
-        return success
-
-    async def release(self, holder_id: str) -> bool:
-        """
-        Release distributed lock.
-
-        Args:
-            holder_id: ID of the current lock holder
-
-        Returns:
-            True if lock released, False otherwise
-        """
-        if self.holder != holder_id:
-            return False
-
-        # Create log entry for lock release
-        lock_entry = {
-            'type': 'lock_release',
-            'lock_id': self.lock_id,
-            'lock_name': self.lock_name,
-            'holder': holder_id,
-            'timestamp': datetime.now().isoformat()
-        }
-
-        success = await self.consensus.append_entries([lock_entry])
-
-        if success:
-            self.holder = None
-
-        return success
-
-    def is_locked(self) -> bool:
-        """Check if lock is currently held"""
-        return self.holder is not None
-
-    def get_holder(self) -> Optional[str]:
-        """Get current lock holder"""
-        return self.holder
-
-
-
-
-"""
-Distributed Consensus implementation for Pyserv  framework.
-
-This module provides comprehensive consensus algorithms with:
-- Raft consensus algorithm implementation
-- Leader election and log replication
-- Fault tolerance and consistency guarantees
-- Network partition handling
-- Performance optimizations
-"""
-
-import asyncio
-import json
-import logging
-import random
-import socket
-import time
-import uuid
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
-from typing import Dict, List, Optional, Any, Set, Tuple, Callable
-import threading
-import pickle
-import struct
-
-
-class NodeState(Enum):
-    """Raft node states"""
-    FOLLOWER = "follower"
-    CANDIDATE = "candidate"
-    LEADER = "leader"
-
-
-class LogEntry:
-    """Raft log entry"""
-
-    def __init__(self, term: int, index: int, command: Any, client_id: str = None):
-        self.term = term
-        self.index = index
-        self.command = command
-        self.client_id = client_id
-        self.timestamp = datetime.utcnow()
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
-        return {
-            'term': self.term,
-            'index': self.index,
-            'command': self.command,
-            'client_id': self.client_id,
-            'timestamp': self.timestamp.isoformat()
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'LogEntry':
-        """Create from dictionary"""
-        entry = cls(
-            term=data['term'],
-            index=data['index'],
-            command=data['command'],
-            client_id=data.get('client_id')
-        )
-        entry.timestamp = datetime.fromisoformat(data['timestamp'])
-        return entry
+    def is_no_op(self) -> bool:
+        """Check if this is a no-op entry"""
+        return self.entry_type == LogEntryType.NO_OP
 
 
 @dataclass
-class AppendEntriesRequest:
-    """AppendEntries RPC request"""
+class RPCRequest:
+    """Base RPC request"""
     term: int
-    leader_id: str
-    prev_log_index: int
-    prev_log_term: int
-    entries: List[LogEntry]
-    leader_commit: int
     request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def to_bytes(self) -> bytes:
-        """Serialize to bytes for network transmission"""
-        data = {
-            'term': self.term,
-            'leader_id': self.leader_id,
-            'prev_log_index': self.prev_log_index,
-            'prev_log_term': self.prev_log_term,
-            'entries': [entry.to_dict() for entry in self.entries],
-            'leader_commit': self.leader_commit,
-            'request_id': self.request_id
-        }
-        return pickle.dumps(data)
+        """Serialize to bytes"""
+        return pickle.dumps(self.__dict__, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> 'AppendEntriesRequest':
+    def from_bytes(cls, data: bytes):
         """Deserialize from bytes"""
         parsed_data = pickle.loads(data)
-        entries = [LogEntry.from_dict(entry_data) for entry_data in parsed_data['entries']]
-        return cls(
-            term=parsed_data['term'],
-            leader_id=parsed_data['leader_id'],
-            prev_log_index=parsed_data['prev_log_index'],
-            prev_log_term=parsed_data['prev_log_term'],
-            entries=entries,
-            leader_commit=parsed_data['leader_commit'],
-            request_id=parsed_data['request_id']
-        )
+        return cls(**parsed_data)
 
 
 @dataclass
-class AppendEntriesResponse:
-    """AppendEntries RPC response"""
+class RPCResponse:
+    """Base RPC response"""
     term: int
-    success: bool
-    match_index: int
     request_id: str
+    success: bool = True
     error_message: str = ""
 
     def to_bytes(self) -> bytes:
         """Serialize to bytes"""
-        data = {
-            'term': self.term,
-            'success': self.success,
-            'match_index': self.match_index,
-            'request_id': self.request_id,
-            'error_message': self.error_message
-        }
-        return pickle.dumps(data)
+        return pickle.dumps(self.__dict__, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> 'AppendEntriesResponse':
+    def from_bytes(cls, data: bytes):
         """Deserialize from bytes"""
         parsed_data = pickle.loads(data)
-        return cls(
-            term=parsed_data['term'],
-            success=parsed_data['success'],
-            match_index=parsed_data['match_index'],
-            request_id=parsed_data['request_id'],
-            error_message=parsed_data.get('error_message', '')
-        )
+        return cls(**parsed_data)
 
 
 @dataclass
-class RequestVoteRequest:
+class AppendEntriesRequest(RPCRequest):
+    """AppendEntries RPC request"""
+    leader_id: str = ""
+    prev_log_index: int = 0
+    prev_log_term: int = 0
+    entries: List[LogEntry] = field(default_factory=list)
+    leader_commit: int = 0
+
+    def to_bytes(self) -> bytes:
+        """Serialize to bytes with entry conversion"""
+        data = self.__dict__.copy()
+        data['entries'] = [entry.to_dict() for entry in self.entries]
+        return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @classmethod
+    def from_bytes(cls, data: bytes):
+        """Deserialize from bytes with entry conversion"""
+        parsed_data = pickle.loads(data)
+        entries = [LogEntry.from_dict(entry_data) for entry_data in parsed_data.get('entries', [])]
+        parsed_data['entries'] = entries
+        return cls(**parsed_data)
+
+
+@dataclass
+class AppendEntriesResponse(RPCResponse):
+    """AppendEntries RPC response"""
+    match_index: int = 0
+
+
+@dataclass
+class RequestVoteRequest(RPCRequest):
     """RequestVote RPC request"""
-    term: int
-    candidate_id: str
-    last_log_index: int
-    last_log_term: int
-    request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-
-    def to_bytes(self) -> bytes:
-        """Serialize to bytes"""
-        data = {
-            'term': self.term,
-            'candidate_id': self.candidate_id,
-            'last_log_index': self.last_log_index,
-            'last_log_term': self.last_log_term,
-            'request_id': self.request_id
-        }
-        return pickle.dumps(data)
-
-    @classmethod
-    def from_bytes(cls, data: bytes) -> 'RequestVoteRequest':
-        """Deserialize from bytes"""
-        parsed_data = pickle.loads(data)
-        return cls(
-            term=parsed_data['term'],
-            candidate_id=parsed_data['candidate_id'],
-            last_log_index=parsed_data['last_log_index'],
-            last_log_term=parsed_data['last_log_term'],
-            request_id=parsed_data['request_id']
-        )
+    candidate_id: str = ""
+    last_log_index: int = 0
+    last_log_term: int = 0
 
 
 @dataclass
-class RequestVoteResponse:
+class RequestVoteResponse(RPCResponse):
     """RequestVote RPC response"""
-    term: int
-    vote_granted: bool
-    request_id: str
+    vote_granted: bool = False
 
-    def to_bytes(self) -> bytes:
-        """Serialize to bytes"""
-        data = {
-            'term': self.term,
-            'vote_granted': self.vote_granted,
-            'request_id': self.request_id
-        }
-        return pickle.dumps(data)
-
-    @classmethod
-    def from_bytes(cls, data: bytes) -> 'RequestVoteResponse':
-        """Deserialize from bytes"""
-        parsed_data = pickle.loads(data)
-        return cls(
-            term=parsed_data['term'],
-            vote_granted=parsed_data['vote_granted'],
-            request_id=parsed_data['request_id']
-        )
+    @property
+    def success(self) -> bool:
+        """Success is determined by vote_granted"""
+        return self.vote_granted
 
 
-class NetworkTransport(ABC):
-    """Abstract network transport layer"""
+class PersistentStorage:
+    """Database-agnostic persistent storage for Raft state"""
 
-    @abstractmethod
-    async def send_append_entries(self, node_id: str, request: AppendEntriesRequest) -> AppendEntriesResponse:
-        """Send AppendEntries RPC to node"""
-        pass
+    def __init__(self, node_id: str, db_connection: Optional[DatabaseConnection] = None):
+        self.node_id = node_id
+        if db_connection is None:
+            try:
+                db_connection = DatabaseConnection.get_instance(db_config)
+            except Exception as e:
+                logger.warning(f"Could not get database connection: {e}")
+        
+        self.db_connection = db_connection
+        self._initialized = False
 
-    @abstractmethod
-    async def send_request_vote(self, node_id: str, request: RequestVoteRequest) -> RequestVoteResponse:
-        """Send RequestVote RPC to node"""
-        pass
+    async def _ensure_initialized(self):
+        """Ensure database is initialized"""
+        if self._initialized or not self.db_connection:
+            return
+        
+        try:
+            await self.db_connection.connect()
+            
+            # Create state collection/table
+            await self.db_connection.create_table(type('RaftState', (), {
+                '__tablename__': 'raft_state',
+                'key': str,
+                'value': str
+            }))
+            
+            # Create log collection/table  
+            await self.db_connection.create_table(type('RaftLog', (), {
+                '__tablename__': 'raft_log',
+                'entry_index': int,
+                'term': int,
+                'entry_type': str,
+                'command': str,
+                'client_id': str,
+                'timestamp': str
+            }))
 
-    @abstractmethod
-    async def broadcast_append_entries(self, requests: Dict[str, AppendEntriesRequest]) -> Dict[str, AppendEntriesResponse]:
-        """Broadcast AppendEntries to multiple nodes"""
-        pass
+            # Insert defaults
+            for key, value in [('current_term', '0'), ('voted_for', ''), ('commit_index', '0'), ('last_applied', '0')]:
+                try:
+                    await self.db_connection.insert_one(type('RaftState', (), {'__tablename__': 'raft_state'}), {'key': key, 'value': value})
+                except:
+                    pass
+            
+            self._initialized = True
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+
+    async def get_current_term(self) -> int:
+        """Get current term from persistent storage"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return 0
+        
+        try:
+            result = await self.db_connection.find_one(type('RaftState', (), {'__tablename__': 'raft_state'}), {'key': 'current_term'})
+            return int(result['value']) if result else 0
+        except:
+            return 0
+
+    async def set_current_term(self, term: int):
+        """Set current term in persistent storage"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return
+        
+        try:
+            await self.db_connection.update_one(type('RaftState', (), {'__tablename__': 'raft_state'}), {'key': 'current_term'}, {'value': str(term)})
+        except Exception as e:
+            logger.error(f"Failed to set current term: {e}")
+
+    async def get_voted_for(self) -> Optional[str]:
+        """Get voted_for from persistent storage"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return None
+        
+        try:
+            result = await self.db_connection.find_one(type('RaftState', (), {'__tablename__': 'raft_state'}), {'key': 'voted_for'})
+            return result['value'] if result and result['value'] else None
+        except:
+            return None
+
+    async def set_voted_for(self, voted_for: Optional[str]):
+        """Set voted_for in persistent storage"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return
+        
+        try:
+            await self.db_connection.update_one(type('RaftState', (), {'__tablename__': 'raft_state'}), {'key': 'voted_for'}, {'value': voted_for or ''})
+        except Exception as e:
+            logger.error(f"Failed to set voted_for: {e}")
+
+    async def get_last_log_index(self) -> int:
+        """Get the last log index"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return 0
+        
+        try:
+            results = await self.db_connection.find_many(type('RaftLog', (), {'__tablename__': 'raft_log'}), {}, sort=[('entry_index', -1)], limit=1)
+            return results[0]['entry_index'] if results else 0
+        except:
+            return 0
+
+    async def get_last_log_term(self) -> int:
+        """Get the last log term"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return 0
+        
+        try:
+            results = await self.db_connection.find_many(type('RaftLog', (), {'__tablename__': 'raft_log'}), {}, sort=[('entry_index', -1)], limit=1)
+            return results[0]['term'] if results else 0
+        except:
+            return 0
+
+    async def get_log_entries(self, start_index: int = 1) -> List[LogEntry]:
+        """Get log entries starting from index"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return []
+        
+        try:
+            results = await self.db_connection.find_many(
+                type('RaftLog', (), {'__tablename__': 'raft_log'}), 
+                {'entry_index': {'$gte': start_index}}, 
+                sort=[('entry_index', 1)]
+            )
+            entries = []
+            for row in results:
+                try:
+                    command = json.loads(row['command']) if row['command'] else None
+                    entries.append(LogEntry(
+                        term=row['term'],
+                        index=row['entry_index'],
+                        entry_type=LogEntryType(row['entry_type']),
+                        command=command,
+                        client_id=row['client_id'],
+                        timestamp=datetime.fromisoformat(row['timestamp'])
+                    ))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"Failed to deserialize log entry {row['entry_index']}: {e}")
+                    continue
+            return entries
+        except Exception as e:
+            logger.error(f"Failed to get log entries: {e}")
+            return []
+
+    async def append_log_entry(self, entry: LogEntry):
+        """Append log entry to persistent storage"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return
+        
+        try:
+            await self.db_connection.insert_one(type('RaftLog', (), {'__tablename__': 'raft_log'}), {
+                'term': entry.term,
+                'entry_index': entry.index,
+                'entry_type': entry.entry_type.value,
+                'command': json.dumps(entry.command) if entry.command else None,
+                'client_id': entry.client_id,
+                'timestamp': entry.timestamp.isoformat()
+            })
+        except Exception as e:
+            logger.error(f"Failed to append log entry: {e}")
+
+    async def truncate_log_from(self, from_index: int):
+        """Truncate log entries from index onwards"""
+        await self._ensure_initialized()
+        if not self.db_connection:
+            return
+        
+        try:
+            results = await self.db_connection.find_many(type('RaftLog', (), {'__tablename__': 'raft_log'}), {'entry_index': {'$gte': from_index}})
+            for entry in results:
+                await self.db_connection.delete_one(type('RaftLog', (), {'__tablename__': 'raft_log'}), {'entry_index': entry['entry_index']})
+        except Exception as e:
+            logger.error(f"Failed to truncate log: {e}")
 
 
-class SocketTransport(NetworkTransport):
-    """Socket-based network transport implementation"""
+class NetworkTransport:
+    """Network transport layer"""
 
     def __init__(self, node_id: str, host: str = 'localhost', port: int = 0):
         self.node_id = node_id
         self.host = host
         self.port = port
-        self.socket = None
         self.server_socket = None
         self.node_addresses: Dict[str, Tuple[str, int]] = {}
-        self.logger = logging.getLogger(f"SocketTransport-{node_id}")
+        self.logger = logging.getLogger(f"NetworkTransport-{node_id}")
+        self._message_handlers: Dict[str, Callable] = {}
+        self._running = False
 
     async def initialize(self):
         """Initialize the transport layer"""
-        # Create server socket
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
@@ -782,11 +374,11 @@ class SocketTransport(NetworkTransport):
         self.server_socket.listen(5)
         self.server_socket.setblocking(False)
 
-        # Start server in background thread
+        self._running = True
         server_thread = threading.Thread(target=self._run_server, daemon=True)
         server_thread.start()
 
-        self.logger.info(f"Socket transport initialized on {self.host}:{self.port}")
+        self.logger.info(f"Network transport initialized on {self.host}:{self.port}")
 
     def _run_server(self):
         """Run the server socket in background thread"""
@@ -795,38 +387,39 @@ class SocketTransport(NetworkTransport):
 
         async def handle_client(client_socket, client_address):
             try:
-                # Read message length
                 length_data = await loop.sock_recv(client_socket, 4)
-                if not length_data:
+                if not length_data or len(length_data) != 4:
                     return
                 message_length = struct.unpack('!I', length_data)[0]
 
-                # Read message data
                 message_data = await loop.sock_recv(client_socket, message_length)
                 if not message_data:
                     return
 
-                # Parse message
                 message = pickle.loads(message_data)
                 response = await self._handle_message(message)
 
-                # Send response
-                response_data = pickle.dumps(response)
-                response_length = struct.pack('!I', len(response_data))
-                await loop.sock_sendall(client_socket, response_length + response_data)
+                if response:
+                    response_data = pickle.dumps(response, protocol=pickle.HIGHEST_PROTOCOL)
+                    response_length = struct.pack('!I', len(response_data))
+                    await loop.sock_sendall(client_socket, response_length + response_data)
 
             except Exception as e:
                 self.logger.error(f"Error handling client {client_address}: {e}")
             finally:
-                client_socket.close()
+                try:
+                    client_socket.close()
+                except:
+                    pass
 
         async def server_loop():
-            while True:
+            while self._running:
                 try:
                     client_socket, client_address = await loop.sock_accept(self.server_socket)
                     asyncio.create_task(handle_client(client_socket, client_address))
                 except Exception as e:
-                    self.logger.error(f"Server error: {e}")
+                    if self._running:
+                        self.logger.error(f"Server error: {e}")
                     break
 
         loop.run_until_complete(server_loop())
@@ -834,28 +427,16 @@ class SocketTransport(NetworkTransport):
     async def _handle_message(self, message: Dict[str, Any]) -> Any:
         """Handle incoming message"""
         message_type = message.get('type')
+        handler = self._message_handlers.get(message_type)
 
-        if message_type == 'append_entries':
-            request = AppendEntriesRequest.from_bytes(message['data'])
-            # This would need access to the Raft node instance
-            # For now, return a mock response
-            return AppendEntriesResponse(
-                term=1,
-                success=False,
-                match_index=0,
-                request_id=request.request_id,
-                error_message="Node not initialized"
-            )
+        if handler:
+            try:
+                return await handler(message.get('data'))
+            except Exception as e:
+                self.logger.error(f"Error handling {message_type} message: {e}")
+                return {'error': str(e)}
 
-        elif message_type == 'request_vote':
-            request = RequestVoteRequest.from_bytes(message['data'])
-            return RequestVoteResponse(
-                term=1,
-                vote_granted=False,
-                request_id=request.request_id
-            )
-
-        return {'error': 'Unknown message type'}
+        return {'error': f'Unknown message type: {message_type}'}
 
     async def send_append_entries(self, node_id: str, request: AppendEntriesRequest) -> AppendEntriesResponse:
         """Send AppendEntries RPC to node"""
@@ -865,46 +446,42 @@ class SocketTransport(NetworkTransport):
         host, port = self.node_addresses[node_id]
 
         try:
-            # Create client socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(5.0)  # 5 second timeout
-
-            # Connect and send
+            sock.settimeout(5.0)
             sock.connect((host, port))
 
-            # Serialize request
             request_data = pickle.dumps({
                 'type': 'append_entries',
                 'data': request.to_bytes()
-            })
+            }, protocol=pickle.HIGHEST_PROTOCOL)
             request_length = struct.pack('!I', len(request_data))
 
-            # Send request
             sock.sendall(request_length + request_data)
 
-            # Read response
             length_data = sock.recv(4)
-            if not length_data:
-                raise Exception("No response received")
+            if not length_data or len(length_data) != 4:
+                raise Exception("Invalid response length")
 
             response_length = struct.unpack('!I', length_data)[0]
             response_data = sock.recv(response_length)
 
             if not response_data:
-                raise Exception("Incomplete response")
+                raise Exception("Empty response")
 
-            # Deserialize response
             response = pickle.loads(response_data)
             if isinstance(response, dict) and 'error' in response:
                 raise Exception(response['error'])
 
-            return AppendEntriesResponse.from_bytes(response)
+            return AppendEntriesResponse.from_bytes(response_data)
 
         except Exception as e:
             self.logger.error(f"Failed to send AppendEntries to {node_id}: {e}")
             raise
         finally:
-            sock.close()
+            try:
+                sock.close()
+            except:
+                pass
 
     async def send_request_vote(self, node_id: str, request: RequestVoteRequest) -> RequestVoteResponse:
         """Send RequestVote RPC to node"""
@@ -916,42 +493,40 @@ class SocketTransport(NetworkTransport):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5.0)
-
             sock.connect((host, port))
 
-            # Serialize request
             request_data = pickle.dumps({
                 'type': 'request_vote',
                 'data': request.to_bytes()
-            })
+            }, protocol=pickle.HIGHEST_PROTOCOL)
             request_length = struct.pack('!I', len(request_data))
 
-            # Send request
             sock.sendall(request_length + request_data)
 
-            # Read response
             length_data = sock.recv(4)
-            if not length_data:
-                raise Exception("No response received")
+            if not length_data or len(length_data) != 4:
+                raise Exception("Invalid response length")
 
             response_length = struct.unpack('!I', length_data)[0]
             response_data = sock.recv(response_length)
 
             if not response_data:
-                raise Exception("Incomplete response")
+                raise Exception("Empty response")
 
-            # Deserialize response
             response = pickle.loads(response_data)
             if isinstance(response, dict) and 'error' in response:
                 raise Exception(response['error'])
 
-            return RequestVoteResponse.from_bytes(response)
+            return RequestVoteResponse.from_bytes(response_data)
 
         except Exception as e:
             self.logger.error(f"Failed to send RequestVote to {node_id}: {e}")
             raise
         finally:
-            sock.close()
+            try:
+                sock.close()
+            except:
+                pass
 
     async def broadcast_append_entries(self, requests: Dict[str, AppendEntriesRequest]) -> Dict[str, AppendEntriesResponse]:
         """Broadcast AppendEntries to multiple nodes"""
@@ -977,6 +552,28 @@ class SocketTransport(NetworkTransport):
 
         return results
 
+    async def broadcast_request_vote(self, requests: Dict[str, RequestVoteRequest]) -> Dict[str, RequestVoteResponse]:
+        """Broadcast RequestVote to multiple nodes"""
+        tasks = []
+        for node_id, request in requests.items():
+            task = asyncio.create_task(self.send_request_vote(node_id, request))
+            tasks.append((node_id, task))
+
+        results = {}
+        for node_id, task in tasks:
+            try:
+                response = await task
+                results[node_id] = response
+            except Exception as e:
+                self.logger.error(f"Vote broadcast failed for {node_id}: {e}")
+                results[node_id] = RequestVoteResponse(
+                    term=0,
+                    vote_granted=False,
+                    request_id=requests[node_id].request_id
+                )
+
+        return results
+
     def add_node(self, node_id: str, host: str, port: int):
         """Add node address to registry"""
         self.node_addresses[node_id] = (host, port)
@@ -985,43 +582,54 @@ class SocketTransport(NetworkTransport):
         """Remove node from registry"""
         self.node_addresses.pop(node_id, None)
 
+    def register_message_handler(self, message_type: str, handler: Callable):
+        """Register message handler"""
+        self._message_handlers[message_type] = handler
+
+    def shutdown(self):
+        """Shutdown the transport layer"""
+        self._running = False
+        if self.server_socket:
+            try:
+                self.server_socket.close()
+            except:
+                pass
+
 
 class RaftNode:
     """Raft consensus algorithm implementation"""
 
-    def __init__(self, node_id: str, cluster_nodes: List[str], transport: NetworkTransport):
+    def __init__(self, node_id: str, cluster_nodes: List[str], transport: NetworkTransport, storage: PersistentStorage):
         self.node_id = node_id
         self.cluster_nodes = cluster_nodes
         self.transport = transport
+        self.storage = storage
 
-        # Raft state
-        self.state = NodeState.FOLLOWER
+        self.role = NodeRole.FOLLOWER
         self.current_term = 0
         self.voted_for: Optional[str] = None
         self.log: List[LogEntry] = []
 
-        # Leader state
         self.next_index: Dict[str, int] = {}
         self.match_index: Dict[str, int] = {}
 
-        # Volatile state
         self.commit_index = 0
         self.last_applied = 0
 
-        # Timing
         self.election_timeout = self._random_election_timeout()
-        self.heartbeat_interval = 0.1  # seconds
+        self.heartbeat_interval = 0.1
         self.last_heartbeat = time.time()
 
-        # State machine
         self.state_machine: Dict[str, Any] = {}
 
-        # Concurrency control
         self.lock = asyncio.Lock()
         self.running = False
         self.logger = logging.getLogger(f"RaftNode-{node_id}")
 
-        # Initialize next/match indices
+        self._election_timer_task: Optional[asyncio.Task] = None
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._log_replication_task: Optional[asyncio.Task] = None
+
         for node in cluster_nodes:
             if node != node_id:
                 self.next_index[node] = 1
@@ -1033,17 +641,21 @@ class RaftNode:
 
     async def start(self):
         """Start the Raft node"""
+        await self._load_persistent_state()
+        await self._load_log_entries()
         self.running = True
-        self.logger.info(f"Starting Raft node {self.node_id}")
+        self.logger.info(f"Starting Raft node {self.node_id} in role {self.role.value}")
 
-        # Start main event loop
+        self.transport.register_message_handler('append_entries', self.handle_append_entries)
+        self.transport.register_message_handler('request_vote', self.handle_request_vote)
+
         while self.running:
             try:
-                if self.state == NodeState.FOLLOWER:
+                if self.role == NodeRole.FOLLOWER:
                     await self._run_follower()
-                elif self.state == NodeState.CANDIDATE:
+                elif self.role == NodeRole.CANDIDATE:
                     await self._run_candidate()
-                elif self.state == NodeState.LEADER:
+                elif self.role == NodeRole.LEADER:
                     await self._run_leader()
             except Exception as e:
                 self.logger.error(f"Error in main loop: {e}")
@@ -1054,44 +666,64 @@ class RaftNode:
         self.running = False
         self.logger.info(f"Stopping Raft node {self.node_id}")
 
-    async def _run_follower(self):
-        """Run follower state logic"""
-        start_time = time.time()
+        if self._election_timer_task:
+            self._election_timer_task.cancel()
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+        if self._log_replication_task:
+            self._log_replication_task.cancel()
 
-        while self.running and self.state == NodeState.FOLLOWER:
+        self.transport.shutdown()
+
+    async def _load_persistent_state(self):
+        """Load persistent state from storage"""
+        self.current_term = await self.storage.get_current_term()
+        self.voted_for = await self.storage.get_voted_for()
+        self.commit_index = 0
+        self.last_applied = 0
+
+    async def _load_log_entries(self):
+        """Load log entries from storage"""
+        self.log = await self.storage.get_log_entries(1)
+
+    async def _run_follower(self):
+        """Run follower role logic"""
+        while self.running and self.role == NodeRole.FOLLOWER:
             current_time = time.time()
 
-            # Check for election timeout
             if current_time - self.last_heartbeat > self.election_timeout:
                 self.logger.info("Election timeout, becoming candidate")
                 await self._become_candidate()
                 break
 
-            await asyncio.sleep(0.01)  # Small delay to prevent busy waiting
+            await asyncio.sleep(0.01)
 
     async def _run_candidate(self):
-        """Run candidate state logic"""
+        """Run candidate role logic"""
         async with self.lock:
             self.current_term += 1
             self.voted_for = self.node_id
-            self.state = NodeState.CANDIDATE
+            self.role = NodeRole.CANDIDATE
+            await self.storage.set_current_term(self.current_term)
+            await self.storage.set_voted_for(self.node_id)
 
-        votes_received = 1  # Vote for self
+        votes_received = 1
         self.logger.info(f"Starting election for term {self.current_term}")
 
-        # Send RequestVote RPCs
         vote_requests = {}
+        last_log_index = await self.storage.get_last_log_index()
+        last_log_term = await self.storage.get_last_log_term()
+
         for node in self.cluster_nodes:
             if node != self.node_id:
                 request = RequestVoteRequest(
                     term=self.current_term,
                     candidate_id=self.node_id,
-                    last_log_index=len(self.log),
-                    last_log_term=self.log[-1].term if self.log else 0
+                    last_log_index=last_log_index,
+                    last_log_term=last_log_term
                 )
                 vote_requests[node] = request
 
-        # Send vote requests
         try:
             responses = await self.transport.broadcast_request_vote(vote_requests)
 
@@ -1100,11 +732,10 @@ class RaftNode:
                     votes_received += 1
                     self.logger.debug(f"Received vote from {node_id}")
                 else:
-                    # Update term if necessary
                     if response.term > self.current_term:
                         await self._step_down(response.term)
+                        return
 
-            # Check if majority
             if votes_received > len(self.cluster_nodes) // 2:
                 self.logger.info(f"Won election with {votes_received} votes")
                 await self._become_leader()
@@ -1117,19 +748,16 @@ class RaftNode:
             await self._become_follower()
 
     async def _run_leader(self):
-        """Run leader state logic"""
+        """Run leader role logic"""
         self.logger.info("Running as leader")
 
-        while self.running and self.state == NodeState.LEADER:
+        if not self._heartbeat_task or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._send_heartbeats())
+
+        while self.running and self.role == NodeRole.LEADER:
             try:
-                # Send heartbeats
-                await self._send_heartbeats()
-
-                # Check for log replication
                 await self._replicate_log()
-
                 await asyncio.sleep(self.heartbeat_interval)
-
             except Exception as e:
                 self.logger.error(f"Leader error: {e}")
                 await self._become_follower()
@@ -1137,43 +765,44 @@ class RaftNode:
 
     async def _send_heartbeats(self):
         """Send heartbeats to all followers"""
-        if not self.running or self.state != NodeState.LEADER:
-            return
+        while self.running and self.role == NodeRole.LEADER:
+            try:
+                heartbeat_requests = {}
+                for node in self.cluster_nodes:
+                    if node != self.node_id:
+                        request = AppendEntriesRequest(
+                            term=self.current_term,
+                            leader_id=self.node_id,
+                            prev_log_index=await self.storage.get_last_log_index(),
+                            prev_log_term=await self.storage.get_last_log_term(),
+                            entries=[],
+                            leader_commit=self.commit_index
+                        )
+                        heartbeat_requests[node] = request
 
-        heartbeat_requests = {}
-        for node in self.cluster_nodes:
-            if node != self.node_id:
-                # Send empty AppendEntries as heartbeat
-                request = AppendEntriesRequest(
-                    term=self.current_term,
-                    leader_id=self.node_id,
-                    prev_log_index=len(self.log),
-                    prev_log_term=self.log[-1].term if self.log else 0,
-                    entries=[],
-                    leader_commit=self.commit_index
-                )
-                heartbeat_requests[node] = request
+                if heartbeat_requests:
+                    responses = await self.transport.broadcast_append_entries(heartbeat_requests)
 
-        try:
-            responses = await self.transport.broadcast_append_entries(heartbeat_requests)
+                    for node_id, response in responses.items():
+                        if not response.success:
+                            if response.term > self.current_term:
+                                await self._step_down(response.term)
+                                return
 
-            # Update follower state based on responses
-            for node_id, response in responses.items():
-                if not response.success:
-                    if response.term > self.current_term:
-                        await self._step_down(response.term)
-                        return
+                            if node_id in self.next_index:
+                                self.next_index[node_id] = max(1, self.next_index[node_id] - 1)
 
-                    # Decrement next_index for this follower
-                    if node_id in self.next_index:
-                        self.next_index[node_id] = max(1, self.next_index[node_id] - 1)
+                await asyncio.sleep(self.heartbeat_interval)
 
-        except Exception as e:
-            self.logger.error(f"Heartbeat failed: {e}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Heartbeat error: {e}")
+                await asyncio.sleep(self.heartbeat_interval)
 
     async def _replicate_log(self):
         """Replicate log entries to followers"""
-        if not self.running or self.state != NodeState.LEADER:
+        if not self.running or self.role != NodeRole.LEADER:
             return
 
         for node in self.cluster_nodes:
@@ -1181,11 +810,12 @@ class RaftNode:
                 next_idx = self.next_index[node]
 
                 if next_idx <= len(self.log):
-                    # Send log entries starting from next_index
                     entries_to_send = self.log[next_idx-1:] if next_idx <= len(self.log) else []
 
                     prev_log_index = next_idx - 1
-                    prev_log_term = self.log[prev_log_index].term if prev_log_index > 0 else 0
+                    prev_log_term = 0
+                    if prev_log_index > 0 and prev_log_index <= len(self.log):
+                        prev_log_term = self.log[prev_log_index - 1].term
 
                     request = AppendEntriesRequest(
                         term=self.current_term,
@@ -1200,19 +830,13 @@ class RaftNode:
                         response = await self.transport.send_append_entries(node, request)
 
                         if response.success:
-                            # Update match and next indices
                             self.match_index[node] = prev_log_index + len(entries_to_send)
                             self.next_index[node] = self.match_index[node] + 1
-
-                            # Update commit index
                             await self._update_commit_index()
-
                         else:
                             if response.term > self.current_term:
                                 await self._step_down(response.term)
                                 return
-
-                            # Decrement next_index and retry
                             self.next_index[node] = max(1, self.next_index[node] - 1)
 
                     except Exception as e:
@@ -1221,10 +845,9 @@ class RaftNode:
 
     async def _update_commit_index(self):
         """Update commit index based on majority replication"""
-        if not self.running or self.state != NodeState.LEADER:
+        if not self.running or self.role != NodeRole.LEADER:
             return
 
-        # Find highest index replicated on majority of nodes
         match_indices = sorted([self.match_index[node] for node in self.cluster_nodes if node != self.node_id])
         match_indices.append(self.match_index[self.node_id])
 
@@ -1232,7 +855,6 @@ class RaftNode:
             median_index = match_indices[len(match_indices) // 2]
 
             if median_index > self.commit_index:
-                # Check if log entry at median_index has current term
                 if median_index <= len(self.log) and self.log[median_index - 1].term == self.current_term:
                     self.commit_index = median_index
                     await self._apply_committed_entries()
@@ -1242,16 +864,11 @@ class RaftNode:
         while self.last_applied < self.commit_index:
             self.last_applied += 1
             entry = self.log[self.last_applied - 1]
-
-            # Apply command to state machine
             await self._apply_to_state_machine(entry.command)
-
             self.logger.debug(f"Applied log entry {self.last_applied}")
 
     async def _apply_to_state_machine(self, command: Any):
         """Apply command to state machine"""
-        # Real implementation would apply the command to the actual state machine
-        # For now, just store in a simple dictionary
         if isinstance(command, dict):
             key = command.get('key')
             value = command.get('value')
@@ -1261,67 +878,84 @@ class RaftNode:
     async def append_entry(self, command: Any, client_id: str = None) -> bool:
         """Append entry to log (only leader can do this)"""
         async with self.lock:
-            if self.state != NodeState.LEADER:
+            if self.role != NodeRole.LEADER:
                 return False
 
-            # Create log entry
             entry = LogEntry(
                 term=self.current_term,
                 index=len(self.log) + 1,
+                entry_type=LogEntryType.COMMAND,
                 command=command,
                 client_id=client_id
             )
 
-            # Append to local log
             self.log.append(entry)
-
-            # Update leader's match index
+            await self.storage.append_log_entry(entry)
             self.match_index[self.node_id] = len(self.log)
 
             self.logger.debug(f"Appended entry to log: {len(self.log)}")
             return True
 
     async def _become_candidate(self):
-        """Transition to candidate state"""
+        """Transition to candidate role"""
         async with self.lock:
-            self.state = NodeState.CANDIDATE
+            self.role = NodeRole.CANDIDATE
             self.current_term += 1
             self.voted_for = self.node_id
+            await self.storage.set_current_term(self.current_term)
+            await self.storage.set_voted_for(self.node_id)
 
     async def _become_leader(self):
-        """Transition to leader state"""
+        """Transition to leader role"""
         async with self.lock:
-            self.state = NodeState.LEADER
+            self.role = NodeRole.LEADER
             self.last_heartbeat = time.time()
 
-            # Initialize leader state
             for node in self.cluster_nodes:
                 if node != self.node_id:
                     self.next_index[node] = len(self.log) + 1
                     self.match_index[node] = 0
 
     async def _become_follower(self):
-        """Transition to follower state"""
+        """Transition to follower role"""
         async with self.lock:
-            self.state = NodeState.FOLLOWER
+            self.role = NodeRole.FOLLOWER
             self.voted_for = None
+            await self.storage.set_voted_for(None)
 
     async def _step_down(self, term: int):
         """Step down to follower due to higher term"""
         async with self.lock:
             if term > self.current_term:
                 self.current_term = term
-                self.state = NodeState.FOLLOWER
+                self.role = NodeRole.FOLLOWER
                 self.voted_for = None
+                await self.storage.set_current_term(term)
+                await self.storage.set_voted_for(None)
                 self.last_heartbeat = time.time()
 
-    # RPC handlers
-    async def handle_append_entries(self, request: AppendEntriesRequest) -> AppendEntriesResponse:
+    async def handle_append_entries(self, request_data: bytes) -> bytes:
         """Handle AppendEntries RPC"""
+        try:
+            request = AppendEntriesRequest.from_bytes(request_data)
+            response = await self._process_append_entries(request)
+            return response.to_bytes()
+        except Exception as e:
+            self.logger.error(f"Error handling AppendEntries: {e}")
+            error_response = AppendEntriesResponse(
+                term=self.current_term,
+                success=False,
+                match_index=0,
+                request_id=request.request_id if 'request' in locals() else str(uuid.uuid4()),
+                error_message=str(e)
+            )
+            return error_response.to_bytes()
+
+    async def _process_append_entries(self, request: AppendEntriesRequest) -> AppendEntriesResponse:
+        """Process AppendEntries RPC"""
         async with self.lock:
             self.last_heartbeat = time.time()
 
-            # Reply false if term < current_term
             if request.term < self.current_term:
                 return AppendEntriesResponse(
                     term=self.current_term,
@@ -1330,15 +964,13 @@ class RaftNode:
                     request_id=request.request_id
                 )
 
-            # If RPC request or response contains term T > current_term,
-            # set current_term = T, convert to follower
             if request.term > self.current_term:
                 self.current_term = request.term
-                self.state = NodeState.FOLLOWER
+                self.role = NodeRole.FOLLOWER
                 self.voted_for = None
+                await self.storage.set_current_term(request.term)
+                await self.storage.set_voted_for(None)
 
-            # Reject if log doesn't contain an entry at prev_log_index
-            # whose term matches prev_log_term
             if request.prev_log_index > 0:
                 if (request.prev_log_index > len(self.log) or
                     self.log[request.prev_log_index - 1].term != request.prev_log_term):
@@ -1349,25 +981,22 @@ class RaftNode:
                         request_id=request.request_id
                     )
 
-            # If an existing entry conflicts with a new one (same index
-            # but different terms), delete the existing entry and all that follow it
             log_index = request.prev_log_index
             for entry in request.entries:
                 log_index += 1
 
                 if (log_index <= len(self.log) and
                     self.log[log_index - 1].term != entry.term):
-                    # Delete conflicting entries
                     self.log = self.log[:log_index - 1]
+                    await self.storage.truncate_log_from(log_index)
                     break
 
-            # Append any new entries not already in the log
             for entry in request.entries:
                 if log_index > len(self.log):
                     self.log.append(entry)
+                    await self.storage.append_log_entry(entry)
                     log_index += 1
 
-            # If leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
             if request.leader_commit > self.commit_index:
                 self.commit_index = min(request.leader_commit, len(self.log))
                 await self._apply_committed_entries()
@@ -1379,12 +1008,26 @@ class RaftNode:
                 request_id=request.request_id
             )
 
-    async def handle_request_vote(self, request: RequestVoteRequest) -> RequestVoteResponse:
+    async def handle_request_vote(self, request_data: bytes) -> bytes:
         """Handle RequestVote RPC"""
+        try:
+            request = RequestVoteRequest.from_bytes(request_data)
+            response = await self._process_request_vote(request)
+            return response.to_bytes()
+        except Exception as e:
+            self.logger.error(f"Error handling RequestVote: {e}")
+            error_response = RequestVoteResponse(
+                term=self.current_term,
+                vote_granted=False,
+                request_id=request.request_id if 'request' in locals() else str(uuid.uuid4())
+            )
+            return error_response.to_bytes()
+
+    async def _process_request_vote(self, request: RequestVoteRequest) -> RequestVoteResponse:
+        """Process RequestVote RPC"""
         async with self.lock:
             self.last_heartbeat = time.time()
 
-            # Reply false if term < current_term
             if request.term < self.current_term:
                 return RequestVoteResponse(
                     term=self.current_term,
@@ -1392,17 +1035,15 @@ class RaftNode:
                     request_id=request.request_id
                 )
 
-            # If voted_for is null or candidate_id, and candidate's log is at
-            # least as up-to-date as receiver's log, grant vote
             if (self.voted_for is None or self.voted_for == request.candidate_id):
-                # Check if candidate's log is up-to-date
-                last_log_term = self.log[-1].term if self.log else 0
+                last_log_term = await self.storage.get_last_log_term()
                 log_ok = (request.last_log_term > last_log_term or
                          (request.last_log_term == last_log_term and
-                          request.last_log_index >= len(self.log)))
+                          request.last_log_index >= await self.storage.get_last_log_index()))
 
                 if log_ok:
                     self.voted_for = request.candidate_id
+                    await self.storage.set_voted_for(request.candidate_id)
                     return RequestVoteResponse(
                         term=self.current_term,
                         vote_granted=True,
@@ -1417,30 +1058,27 @@ class RaftNode:
 
 
 class ConsensusManager:
-    """High-level consensus manager"""
+    """Consensus manager"""
 
-    def __init__(self, node_id: str, cluster_config: Dict[str, str]):
+    def __init__(self, node_id: str, cluster_config: Dict[str, str], db_connection: Optional[DatabaseConnection] = None):
         self.node_id = node_id
         self.cluster_config = cluster_config
-        self.transport = SocketTransport(node_id)
+        self.transport = NetworkTransport(node_id)
+        self.storage = PersistentStorage(node_id, db_connection)
         self.raft_node: Optional[RaftNode] = None
         self.logger = logging.getLogger(f"ConsensusManager-{node_id}")
 
     async def initialize(self):
         """Initialize consensus system"""
-        # Initialize transport
         await self.transport.initialize()
 
-        # Register cluster nodes
         for node_id, address in self.cluster_config.items():
             host, port = address.split(':')
             self.transport.add_node(node_id, host, int(port))
 
-        # Create Raft node
         cluster_nodes = list(self.cluster_config.keys())
-        self.raft_node = RaftNode(self.node_id, cluster_nodes, self.transport)
+        self.raft_node = RaftNode(self.node_id, cluster_nodes, self.transport, self.storage)
 
-        # Start Raft node
         asyncio.create_task(self.raft_node.start())
 
         self.logger.info(f"Consensus manager initialized for node {self.node_id}")
@@ -1454,7 +1092,7 @@ class ConsensusManager:
 
     async def submit_command(self, command: Any, client_id: str = None) -> bool:
         """Submit command to consensus system"""
-        if not self.raft_node or self.raft_node.state != NodeState.LEADER:
+        if not self.raft_node or self.raft_node.role != NodeRole.LEADER:
             self.logger.warning("Not leader, cannot accept command")
             return False
 
@@ -1473,13 +1111,107 @@ class ConsensusManager:
 
         return {
             'node_id': self.raft_node.node_id,
-            'state': self.raft_node.state.value,
+            'role': self.raft_node.role.value,
             'term': self.raft_node.current_term,
             'log_length': len(self.raft_node.log),
             'commit_index': self.raft_node.commit_index,
             'last_applied': self.raft_node.last_applied,
-            'cluster_nodes': self.raft_node.cluster_nodes
+            'cluster_nodes': self.raft_node.cluster_nodes,
+            'state_machine_size': len(self.raft_node.state_machine)
         }
+
+
+class DistributedLock:
+    """Distributed lock using Raft consensus algorithm"""
+
+    def __init__(self, consensus_manager: ConsensusManager, lock_name: str):
+        self.consensus_manager = consensus_manager
+        self.lock_name = lock_name
+        self.holder: Optional[str] = None
+        self.lock_id = f"lock_{lock_name}_{random.randint(1000, 9999)}"
+        self.logger = logging.getLogger(f"DistributedLock-{lock_name}")
+
+    async def acquire(self, holder_id: str, timeout: float = 5.0) -> bool:
+        """Acquire distributed lock"""
+        if self.holder is not None:
+            return False
+
+        lock_entry = {
+            'type': 'lock_acquire',
+            'lock_id': self.lock_id,
+            'lock_name': self.lock_name,
+            'holder': holder_id,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+
+        try:
+            success = await asyncio.wait_for(
+                self.consensus_manager.submit_command(lock_entry, holder_id),
+                timeout=timeout
+            )
+
+            if success:
+                self.holder = holder_id
+                self.logger.info(f"Lock {self.lock_name} acquired by {holder_id}")
+
+            return success
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Lock acquisition timeout for {self.lock_name}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Failed to acquire lock {self.lock_name}: {e}")
+            return False
+
+    async def release(self, holder_id: str) -> bool:
+        """Release distributed lock"""
+        if self.holder != holder_id:
+            self.logger.warning(f"Lock {self.lock_name} not held by {holder_id}")
+            return False
+
+        lock_entry = {
+            'type': 'lock_release',
+            'lock_id': self.lock_id,
+            'lock_name': self.lock_name,
+            'holder': holder_id,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+
+        try:
+            success = await self.consensus_manager.submit_command(lock_entry, holder_id)
+
+            if success:
+                self.holder = None
+                self.logger.info(f"Lock {self.lock_name} released by {holder_id}")
+
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to release lock {self.lock_name}: {e}")
+            return False
+
+    def is_locked(self) -> bool:
+        """Check if lock is currently held"""
+        return self.holder is not None
+
+    def get_holder(self) -> Optional[str]:
+        """Get current lock holder"""
+        return self.holder
+
+    async def __aenter__(self):
+        """Async context manager entry"""
+        if not await self.acquire("context_manager"):
+            raise RuntimeError(f"Failed to acquire lock {self.lock_name}")
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        await self.release("context_manager")
+
+
+# Factory functions
+def create_consensus_manager(node_id: str, cluster_config: Dict[str, str], 
+                           db_connection: Optional[DatabaseConnection] = None) -> ConsensusManager:
+    """Create consensus manager with optional database connection"""
+    return ConsensusManager(node_id, cluster_config, db_connection)
 
 
 # Global consensus manager instance

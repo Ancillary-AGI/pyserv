@@ -15,7 +15,7 @@ import inspect
 
 from pyserv.database.config import DatabaseConfig
 from pyserv.database.connections import DatabaseConnection
-from pyserv.utils.types import Field, Relationship, RelationshipType, OrderDirection, PaginatedResponse, AggregationResult, LazyLoad
+from pyserv.models.base import Field, Relationship, RelationshipType, OrderDirection, PaginatedResponse, AggregationResult, LazyLoad
 from pyserv.utils.collections import Collection
 
 T = TypeVar('T')
@@ -27,8 +27,7 @@ class QueryBuilder(Generic[T]):
 
     def __init__(self, model_class: Type[T]):
         self.model_class = model_class
-        self.db = DatabaseConnection.get_instance(self.model_class._db_config)
-        self.backend = self.db.backend
+        self.db = model_class.get_db_connection()
         self.conditions: List[str] = []
         self.params: List[Any] = []
         self._limit: Optional[int] = None
@@ -69,7 +68,7 @@ class QueryBuilder(Generic[T]):
 
     def _get_next_param_placeholder(self) -> str:
         """Get the next parameter placeholder using backend"""
-        placeholder = self.backend.get_param_placeholder(self._param_counter)
+        placeholder = self.db.get_param_placeholder(self._param_counter)
         if placeholder == "$":
             # For PostgreSQL-style placeholders
             self._param_counter += 1
@@ -154,48 +153,9 @@ class QueryBuilder(Generic[T]):
         self._having_params.extend(params)
         return self
 
-    def _build_sql(self) -> Tuple[str, List[Any]]:
-        """Build SQL query and parameters"""
-        # SELECT clause
-        select_clause = "SELECT "
-        if self._distinct:
-            select_clause += "DISTINCT "
-        select_clause += ', '.join(self._select_fields) if self._select_fields else '*'
-
-        # FROM clause
-        from_clause = f"FROM {self.model_class.get_table_name()}"
-
-        # WHERE clause
-        where_clause = f"WHERE {' AND '.join(self.conditions)}" if self.conditions else ""
-
-        # GROUP BY clause
-        group_by_clause = f"GROUP BY {', '.join(self._group_by)}" if self._group_by else ""
-
-        # HAVING clause
-        having_clause = f"HAVING {' AND '.join(self._having_conditions)}" if self._having_conditions else ""
-
-        # ORDER BY clause
-        order_clause = ""
-        if self._order_by:
-            order_parts = []
-            for field, direction in self._order_by:
-                order_parts.append(f"{field} {direction.value}")
-            order_clause = f"ORDER BY {', '.join(order_parts)}"
-
-        # LIMIT and OFFSET clauses
-        limit_clause = f"LIMIT {self._limit}" if self._limit else ""
-        offset_clause = f"OFFSET {self._offset}" if self._offset else ""
-
-        sql = f"{select_clause} {from_clause} {where_clause} {group_by_clause} {having_clause} {order_clause} {limit_clause} {offset_clause}"
-
-        # Combine all parameters
-        all_params = self.params + self._having_params
-
-        return sql, all_params
-
     async def execute(self) -> List[T]:
-        """Execute the query and return results using backend abstraction"""
-        # Build query parameters for the backend
+        """Execute the query and return results using unified db interface"""
+        # Build query parameters for unified db interface
         query_params = {
             'select_fields': self._select_fields,
             'distinct': self._distinct,
@@ -204,11 +164,13 @@ class QueryBuilder(Generic[T]):
             'offset': self._offset,
             'order_by': self._order_by,
             'group_by': self._group_by,
-            'having': self._having_conditions
+            'having': self._having_conditions,
+            'having_params': self._having_params,
+            'table_name': self.model_class.get_table_name()
         }
 
-        # Execute using backend's query builder method
-        results = await self.backend.execute_query_builder(self.model_class, query_params)
+        # Execute using unified db interface
+        results = await self.db.execute_query_builder(self.model_class, query_params)
 
         # Convert results to model instances
         instances = []
@@ -221,8 +183,6 @@ class QueryBuilder(Generic[T]):
             await self._prefetch_relationships(instances)
 
         return instances
-
-
 
     async def _prefetch_relationships(self, instances: List[T]):
         """Prefetch relationships to avoid N+1 queries"""
@@ -306,22 +266,8 @@ class QueryBuilder(Generic[T]):
             }).execute()
 
     async def count(self) -> int:
-        """Return count of matching records using backend abstraction"""
-        # Build query parameters for the backend
-        query_params = {
-            'select_fields': [],
-            'distinct': False,
-            'filters': self._filter_criteria,
-            'limit': None,
-            'offset': None,
-            'order_by': [],
-            'group_by': [],
-            'having': []
-        }
-
-        # Execute using backend's query builder method and count results
-        results = await self.backend.execute_query_builder(self.model_class, query_params)
-        return len(results)
+        """Return count of matching records using unified db interface"""
+        return await self.db.count(self.model_class, self._filter_criteria)
 
 
 
@@ -361,27 +307,17 @@ class QueryBuilder(Generic[T]):
         return await self.to_collection()
 
     async def aggregate(self, **aggregations: str) -> AggregationResult:
-        """Perform aggregation operations using backend abstraction"""
-        # Convert filters to backend format
-        filters = self._convert_filters_to_backend()
-
-        # Convert aggregations to backend format
-        pipeline = []
-        for field, func in aggregations.items():
-            if func == 'count':
-                pipeline.append({'$group': {'_id': None, f'{field}_count': {'$sum': 1}}})
-            elif func == 'sum':
-                pipeline.append({'$group': {'_id': None, f'{field}_sum': {'$sum': f'${field}'}}})
-            elif func == 'avg':
-                pipeline.append({'$group': {'_id': None, f'{field}_avg': {'$avg': f'${field}'}}})
-            elif func == 'min':
-                pipeline.append({'$group': {'_id': None, f'{field}_min': {'$min': f'${field}'}}})
-            elif func == 'max':
-                pipeline.append({'$group': {'_id': None, f'{field}_max': {'$max': f'${field}'}}})
-
-        # Use backend aggregate method
-        results = await self.backend.aggregate(self.model_class, pipeline)
-
+        """Perform aggregation operations using unified db interface"""
+        # Build aggregation parameters
+        agg_params = {
+            'filters': self._filter_criteria,
+            'aggregations': aggregations,
+            'group_by': self._group_by
+        }
+        
+        # Execute using unified db interface
+        results = await self.db.aggregate(self.model_class, agg_params)
+        
         # Convert results to AggregationResult
         agg_result = AggregationResult()
         if results:
@@ -398,7 +334,7 @@ class QueryBuilder(Generic[T]):
                     agg_result.min = value
                 elif func == 'max':
                     agg_result.max = value
-
+        
         return agg_result
 
 

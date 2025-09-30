@@ -499,16 +499,6 @@ class APIError(APIException):
     pass
 
 
-class ValidationError(APIException):
-    """Validation error (legacy compatibility)"""
-    pass
-
-
-class PermissionDenied(APIException):
-    """Permission denied (legacy compatibility)"""
-    pass
-
-
 # Utility functions
 def get_exception_by_status_code(status_code: int) -> type:
     """Get exception class by HTTP status code"""

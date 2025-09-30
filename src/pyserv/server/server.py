@@ -6,10 +6,13 @@ from hypercorn.asyncio import serve
 from hypercorn.config import Config as HyperConfig
 
 from .config import AppConfig
-from .application import Application
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .application import Application
 
 class Server:
-    def __init__(self, app: Application, config: Optional[AppConfig] = None):
+    def __init__(self, app: "Application", config: Optional[AppConfig] = None):
         self.app = app
         self.config = config or AppConfig()
         self._server_task: Optional[asyncio.Task] = None

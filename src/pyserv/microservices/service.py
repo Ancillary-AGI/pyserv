@@ -18,10 +18,13 @@ import time
 import logging
 import json
 import threading
+import random
 from datetime import datetime, timedelta
 import socket
 import aiohttp
 from urllib.parse import urlparse
+from pyserv.database.connections import DatabaseConnection
+from pyserv.database.config import DatabaseConfig
 
 
 class ServiceStatus(Enum):
@@ -168,16 +171,26 @@ class Service(ABC):
 class ServiceRegistry:
     """Production-ready service registry with health monitoring"""
 
-    def __init__(self):
+    def __init__(self, db_config: Optional[DatabaseConfig] = None):
         self.services: Dict[str, List[ServiceInstance]] = {}
         self.heartbeat_intervals: Dict[str, float] = {}
         self.logger = logging.getLogger("ServiceRegistry")
         self._running = False
         self._health_check_task: Optional[asyncio.Task] = None
         self._cleanup_task: Optional[asyncio.Task] = None
+        
+        # Database connection for persistence
+        if db_config:
+            self.db_connection = DatabaseConnection.get_instance(db_config)
+        else:
+            # Default SQLite for service registry
+            default_config = DatabaseConfig("sqlite:///service_registry.db")
+            self.db_connection = DatabaseConnection.get_instance(default_config)
 
     async def start(self):
         """Start the service registry"""
+        await self.db_connection.connect()
+        await self._create_tables()
         self._running = True
         self._health_check_task = asyncio.create_task(self._health_check_loop())
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
@@ -219,6 +232,9 @@ class ServiceRegistry:
             self.services[name].append(instance)
             self.heartbeat_intervals[name] = 30.0  # 30 second heartbeat interval
 
+            # Persist to database
+            await self._persist_service_instance(instance)
+
             self.logger.info(f"Registered service: {name} at {address}:{port}")
             return True
 
@@ -237,6 +253,8 @@ class ServiceRegistry:
             for i, instance in enumerate(instances):
                 if instance.address == address and instance.port == port:
                     instances.pop(i)
+                    # Remove from database
+                    await self._remove_service_instance(name, address, port)
                     self.logger.info(f"Unregistered service: {name} at {address}:{port}")
                     break
 
@@ -339,6 +357,56 @@ class ServiceRegistry:
                 break
             except Exception as e:
                 self.logger.error(f"Cleanup loop error: {e}")
+
+    async def _create_tables(self):
+        """Create service registry tables"""
+        try:
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS service_instances (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    address TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    version TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    metadata TEXT,
+                    registered_at TIMESTAMP,
+                    last_heartbeat TIMESTAMP,
+                    UNIQUE(name, address, port)
+                )
+            """)
+        except Exception as e:
+            self.logger.error(f"Failed to create service registry tables: {e}")
+
+    async def _persist_service_instance(self, instance: ServiceInstance):
+        """Persist service instance to database"""
+        try:
+            await self.db_connection.execute("""
+                INSERT OR REPLACE INTO service_instances
+                (name, address, port, version, status, metadata, registered_at, last_heartbeat)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                instance.name,
+                instance.address,
+                instance.port,
+                instance.version,
+                instance.status.value,
+                json.dumps(instance.metadata),
+                instance.registered_at.isoformat(),
+                instance.last_heartbeat.isoformat()
+            ))
+        except Exception as e:
+            self.logger.error(f"Failed to persist service instance: {e}")
+
+    async def _remove_service_instance(self, name: str, address: str, port: int):
+        """Remove service instance from database"""
+        try:
+            await self.db_connection.execute("""
+                DELETE FROM service_instances
+                WHERE name = ? AND address = ? AND port = ?
+            """, (name, address, port))
+        except Exception as e:
+            self.logger.error(f"Failed to remove service instance: {e}")
 
 
 class ServiceDiscovery:
@@ -509,11 +577,11 @@ _service_registry: Optional[ServiceRegistry] = None
 _service_discovery: Optional[ServiceDiscovery] = None
 _load_balancer: Optional[LoadBalancer] = None
 
-def get_service_registry() -> ServiceRegistry:
+def get_service_registry(db_config: Optional[DatabaseConfig] = None) -> ServiceRegistry:
     """Get global service registry instance"""
     global _service_registry
     if _service_registry is None:
-        _service_registry = ServiceRegistry()
+        _service_registry = ServiceRegistry(db_config)
     return _service_registry
 
 def get_service_discovery() -> ServiceDiscovery:

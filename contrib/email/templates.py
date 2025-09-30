@@ -114,7 +114,8 @@ class EmailTemplateEngine:
         """Render email subject template"""
         if self.template_engine:
             try:
-                return await self.template_engine.render_template(f"emails/{template_name}_subject.txt", context)
+                template = self.template_engine.from_file(f"templates/emails/{template_name}_subject.txt")
+                return template.render(**context)
             except FileNotFoundError:
                 # Fallback to simple string formatting
                 return template_name.format(**context)
@@ -126,7 +127,8 @@ class EmailTemplateEngine:
         """Render email body template (plain text)"""
         if self.template_engine:
             try:
-                return await self.template_engine.render_template(f"emails/{template_name}_body.txt", context)
+                template = self.template_engine.from_file(f"templates/emails/{template_name}_body.txt")
+                return template.render(**context)
             except FileNotFoundError:
                 # Fallback to simple string formatting
                 return template_name.format(**context)
@@ -138,7 +140,8 @@ class EmailTemplateEngine:
         """Render email HTML body template"""
         if self.template_engine:
             try:
-                return await self.template_engine.render_template(f"emails/{template_name}_body.html", context)
+                template = self.template_engine.from_file(f"templates/emails/{template_name}_body.html")
+                return template.render(**context)
             except FileNotFoundError:
                 return None
         else:
@@ -149,7 +152,8 @@ class EmailTemplateEngine:
         """Render email body from markdown template"""
         if self.template_engine:
             try:
-                markdown_content = await self.template_engine.render_template(f"emails/{template_name}_body.md", context)
+                template = self.template_engine.from_file(f"templates/emails/{template_name}_body.md")
+                markdown_content = template.render(**context)
                 return self.markdown_renderer.render(markdown_content)
             except FileNotFoundError:
                 # Fallback to plain text

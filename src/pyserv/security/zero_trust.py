@@ -10,7 +10,10 @@ import hashlib
 import secrets
 import json
 import asyncio
+import logging
 from enum import Enum
+from pyserv.database.connections import DatabaseConnection
+from pyserv.database.config import DatabaseConfig
 
 
 class TrustLevel(Enum):
@@ -92,10 +95,20 @@ class TrustContext:
 class TrustEngine:
     """Core trust evaluation engine"""
 
-    def __init__(self):
+    def __init__(self, db_config: Optional[DatabaseConfig] = None):
         self.trust_policies: Dict[str, callable] = {}
         self.risk_policies: Dict[str, callable] = {}
         self.device_registry: Dict[str, DeviceFingerprint] = {}
+        
+        # Database connection for location tracking
+        if db_config:
+            self.db_connection = DatabaseConnection.get_instance(db_config)
+        else:
+            # Default SQLite for zero trust data
+            default_config = DatabaseConfig("sqlite:///zero_trust.db")
+            self.db_connection = DatabaseConnection.get_instance(default_config)
+        
+        self.logger = logging.getLogger("TrustEngine")
 
     def register_trust_policy(self, name: str, policy_func: callable):
         """Register a trust evaluation policy"""
@@ -171,53 +184,31 @@ class TrustEngine:
     async def _get_user_known_locations(self, user_id: str) -> List[Dict[str, Any]]:
         """Get user's known locations from database"""
         try:
-            # Real implementation: query user's location history from database
-            import sqlite3
-            from pathlib import Path
+            # Ensure tables exist
+            await self._create_location_tables()
+            
+            # Get user's location history
+            results = await self.db_connection.execute("""
+                SELECT country, city, ip_address, access_count
+                FROM user_locations
+                WHERE user_id = ?
+                ORDER BY last_seen DESC
+                LIMIT 10
+            """, (user_id,))
 
-            # Create database connection for user location tracking
-            db_path = Path("./security_data/zero_trust.db")
-            db_path.parent.mkdir(exist_ok=True)
+            locations = []
+            for row in results:
+                locations.append({
+                    'country': row[0],
+                    'city': row[1],
+                    'ip_address': row[2],
+                    'access_count': row[3]
+                })
 
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS user_locations (
-                        user_id TEXT,
-                        ip_address TEXT,
-                        country TEXT,
-                        city TEXT,
-                        latitude REAL,
-                        longitude REAL,
-                        first_seen TIMESTAMP,
-                        last_seen TIMESTAMP,
-                        access_count INTEGER DEFAULT 1,
-                        PRIMARY KEY (user_id, ip_address)
-                    )
-                """)
-
-                # Get user's location history
-                cursor = conn.execute("""
-                    SELECT country, city, ip_address, COUNT(*) as access_count
-                    FROM user_locations
-                    WHERE user_id = ?
-                    GROUP BY country, city, ip_address
-                    ORDER BY last_seen DESC
-                    LIMIT 10
-                """, (user_id,))
-
-                locations = []
-                for row in cursor.fetchall():
-                    locations.append({
-                        'country': row[0],
-                        'city': row[1],
-                        'ip_address': row[2],
-                        'access_count': row[3]
-                    })
-
-                return locations if locations else [
-                    {'country': 'US', 'city': 'New York', 'ip_range': '192.168.1.0/24'},
-                    {'country': 'US', 'city': 'San Francisco', 'ip_range': '10.0.0.0/8'}
-                ]
+            return locations if locations else [
+                {'country': 'US', 'city': 'New York', 'ip_range': '192.168.1.0/24'},
+                {'country': 'US', 'city': 'San Francisco', 'ip_range': '10.0.0.0/8'}
+            ]
 
         except Exception as e:
             self.logger.error(f"Failed to get user locations for {user_id}: {e}")
@@ -226,54 +217,32 @@ class TrustEngine:
     async def _get_location_history(self, user_id: str, ip_address: str) -> List[Dict[str, Any]]:
         """Get location history for a user and IP"""
         try:
-            # Real implementation: query user's access logs from database
-            import sqlite3
-            from pathlib import Path
+            # Ensure tables exist
+            await self._create_location_tables()
+            
+            # Get location history for user and IP
+            results = await self.db_connection.execute("""
+                SELECT country, city, latitude, longitude, timestamp, risk_score
+                FROM access_logs
+                WHERE user_id = ? AND ip_address = ?
+                ORDER BY timestamp DESC
+                LIMIT 50
+            """, (user_id, ip_address))
 
-            db_path = Path("./security_data/zero_trust.db")
-            db_path.parent.mkdir(exist_ok=True)
+            history = []
+            for row in results:
+                history.append({
+                    'location': {
+                        'country': row[0],
+                        'city': row[1],
+                        'latitude': row[2],
+                        'longitude': row[3]
+                    },
+                    'timestamp': datetime.fromisoformat(row[4]),
+                    'risk_score': row[5]
+                })
 
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS access_logs (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id TEXT,
-                        ip_address TEXT,
-                        user_agent TEXT,
-                        resource TEXT,
-                        action TEXT,
-                        country TEXT,
-                        city TEXT,
-                        latitude REAL,
-                        longitude REAL,
-                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        risk_score REAL DEFAULT 0.0
-                    )
-                """)
-
-                # Get location history for user and IP
-                cursor = conn.execute("""
-                    SELECT country, city, latitude, longitude, timestamp, risk_score
-                    FROM access_logs
-                    WHERE user_id = ? AND ip_address = ?
-                    ORDER BY timestamp DESC
-                    LIMIT 50
-                """, (user_id, ip_address))
-
-                history = []
-                for row in cursor.fetchall():
-                    history.append({
-                        'location': {
-                            'country': row[0],
-                            'city': row[1],
-                            'latitude': row[2],
-                            'longitude': row[3]
-                        },
-                        'timestamp': datetime.fromisoformat(row[4]),
-                        'risk_score': row[5]
-                    })
-
-                return history
+            return history
 
         except Exception as e:
             self.logger.error(f"Failed to get location history for {user_id}: {e}")
@@ -299,6 +268,43 @@ class TrustEngine:
         else:
             return 0.7  # Low consistency
 
+    async def _create_location_tables(self):
+        """Create location tracking tables"""
+        try:
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS user_locations (
+                    user_id TEXT,
+                    ip_address TEXT,
+                    country TEXT,
+                    city TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    first_seen TIMESTAMP,
+                    last_seen TIMESTAMP,
+                    access_count INTEGER DEFAULT 1,
+                    PRIMARY KEY (user_id, ip_address)
+                )
+            """)
+            
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS access_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    resource TEXT,
+                    action TEXT,
+                    country TEXT,
+                    city TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    risk_score REAL DEFAULT 0.0
+                )
+            """)
+        except Exception as e:
+            self.logger.error(f"Failed to create location tables: {e}")
+
 
 class ZeroTrustNetwork:
     """Zero Trust Network implementation"""
@@ -307,6 +313,7 @@ class ZeroTrustNetwork:
         self.trust_engine = trust_engine
         self.access_policies: Dict[str, Dict[str, Any]] = {}
         self.session_registry: Dict[str, Dict[str, Any]] = {}
+        self.logger = logging.getLogger("ZeroTrustNetwork")
 
     def define_access_policy(self, resource: str, policy: Dict[str, Any]):
         """Define access policy for a resource"""
@@ -563,11 +570,11 @@ async def action_risk_policy(context: TrustContext) -> RiskLevel:
 # Global zero trust network instance
 _zero_trust_network = None
 
-def get_zero_trust_network() -> ZeroTrustNetwork:
+def get_zero_trust_network(db_config: Optional[DatabaseConfig] = None) -> ZeroTrustNetwork:
     """Get global zero trust network instance"""
     global _zero_trust_network
     if _zero_trust_network is None:
-        trust_engine = TrustEngine()
+        trust_engine = TrustEngine(db_config)
 
         # Register built-in policies
         trust_engine.register_trust_policy('device_trust', device_trust_policy)

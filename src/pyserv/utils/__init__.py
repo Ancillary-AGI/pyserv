@@ -11,7 +11,7 @@ utility classes and functions.
 # Import utilities from submodules to avoid circular imports
 
 # Import advanced utilities
-from .advanced_math import AdvancedMathUtils
+from .mathematical_operations import MathematicalOperations
 from .advanced_functions import (
     FunctionUtils, AsyncUtils, DataUtils, ValidationUtils,
     PerformanceUtils, ThreadingUtils, LoggingUtils,
@@ -33,8 +33,8 @@ __all__ = [
     'Sanitizer', 'CSRFUtils', 'CompressionUtils', 'EncodingUtils',
     'csrf_exempt', 'csrf_exempt_endpoint',
 
-    # Advanced mathematical utilities
-    'AdvancedMathUtils',
+    # Mathematical operations
+    'MathematicalOperations',
 
     # Advanced function utilities
     'FunctionUtils', 'AsyncUtils', 'DataUtils', 'ValidationUtils',

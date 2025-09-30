@@ -2,20 +2,18 @@
 Model factory for creating model classes dynamically.
 """
 
-from typing import Dict, List, Optional, Any, Type, TypeVar
-from pyserv.utils.types import Field, Relationship, LazyLoad
-
-# Import here to avoid circular imports but make it available for TypeVar
-from pyserv.models.base import BaseModel
+from typing import Dict, Optional, Type, TypeVar, Generic
+from pyserv.models.base import Field, Relationship, LazyLoad, BaseModel
 
 T = TypeVar('T', bound=BaseModel)
 
 
-class ModelFactory:
+class ModelFactory(Generic[T]):
     """Factory for creating model classes dynamically"""
 
-    @staticmethod
+    @classmethod
     def create_model(
+        cls,
         name: str,
         fields: Dict[str, Field],
         table_name: Optional[str] = None,
@@ -36,12 +34,10 @@ class ModelFactory:
             A new model class
         """
         if base_class is None:
-            # Import here to avoid circular imports
-            from pyserv.models.base import BaseModel
             base_class = BaseModel
 
         attrs = {
-            '_columns': fields,
+            '_fields': fields,
             '_table_name': table_name or f"{name.lower()}s",
             '_relationships': relationships or {}
         }
@@ -52,8 +48,9 @@ class ModelFactory:
 
         return type(name, (base_class,), attrs)
 
-    @staticmethod
+    @classmethod
     def extend_model(
+        cls,
         base_model: Type[T],
         name: str,
         additional_fields: Dict[str, Field],
@@ -72,14 +69,14 @@ class ModelFactory:
             A new model class that extends the base model
         """
         # Merge fields
-        merged_fields = {**base_model._columns, **additional_fields}
+        merged_fields = {**base_model._fields, **additional_fields}
 
         # Merge relationships
         merged_relationships = {**(base_model._relationships or {}), **(additional_relationships or {})}
 
         # Create lazy loading descriptors for new relationships
         attrs = {
-            '_columns': merged_fields,
+            '_fields': merged_fields,
             '_table_name': base_model.get_table_name(),
             '_relationships': merged_relationships
         }

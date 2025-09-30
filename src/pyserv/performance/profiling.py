@@ -28,6 +28,8 @@ from functools import wraps
 import json
 import csv
 from pathlib import Path
+from pyserv.database.connections import DatabaseConnection
+from pyserv.database.config import DatabaseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -76,11 +78,19 @@ class LoadTestScenario:
 class PerformanceProfiler:
     """Advanced performance profiler"""
 
-    def __init__(self):
+    def __init__(self, db_config: Optional[DatabaseConfig] = None):
         self.logger = logging.getLogger("PerformanceProfiler")
         self._active_profiles: Dict[str, cProfile.Profile] = {}
         self._memory_snapshots: Dict[str, tracemalloc.Snapshot] = {}
         self._executor = ThreadPoolExecutor(max_workers=4)
+        
+        # Database connection for profiling data
+        if db_config:
+            self.db_connection = DatabaseConnection.get_instance(db_config)
+        else:
+            # Default SQLite for profiling data
+            default_config = DatabaseConfig("sqlite:///profiling.db")
+            self.db_connection = DatabaseConnection.get_instance(default_config)
 
     @contextmanager
     def profile_function(self, name: str):
@@ -236,44 +246,37 @@ class PerformanceProfiler:
     def _store_to_database_sync(self, result: ProfileResult):
         """Store profiling result to database (synchronous version)"""
         try:
-            import sqlite3
-            from pathlib import Path
+            # Run async database operation in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._store_to_database_async(result))
+            finally:
+                loop.close()
 
-            # Create database connection for profiling data
-            db_path = Path("./performance_data/profiling.db")
-            db_path.parent.mkdir(exist_ok=True)
+        except Exception as e:
+            self.logger.error(f"Failed to store profile result to database: {e}")
 
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS profile_results (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        function_name TEXT,
-                        total_time REAL,
-                        call_count INTEGER,
-                        average_time REAL,
-                        cumulative_time REAL,
-                        memory_usage INTEGER,
-                        cpu_usage REAL,
-                        timestamp REAL
-                    )
-                """)
-
-                conn.execute("""
-                    INSERT INTO profile_results
-                    (function_name, total_time, call_count, average_time, cumulative_time, memory_usage, cpu_usage, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    result.function_name,
-                    result.total_time,
-                    result.call_count,
-                    result.average_time,
-                    result.cumulative_time,
-                    result.memory_usage,
-                    result.cpu_usage,
-                    result.timestamp
-                ))
-
-                conn.commit()
+    async def _store_to_database_async(self, result: ProfileResult):
+        """Store profiling result to database (async version)"""
+        try:
+            # Ensure tables exist
+            await self._create_profiling_tables()
+            
+            await self.db_connection.execute("""
+                INSERT INTO profile_results
+                (function_name, total_time, call_count, average_time, cumulative_time, memory_usage, cpu_usage, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                result.function_name,
+                result.total_time,
+                result.call_count,
+                result.average_time,
+                result.cumulative_time,
+                result.memory_usage,
+                result.cpu_usage,
+                result.timestamp
+            ))
 
             self.logger.info(f"Stored profile result to database: {result.function_name}")
 
@@ -305,6 +308,42 @@ class PerformanceProfiler:
 
         except Exception as e:
             self.logger.error(f"Failed to store profile result to file: {e}")
+
+    async def _create_profiling_tables(self):
+        """Create profiling tables"""
+        try:
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS profile_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    function_name TEXT,
+                    total_time REAL,
+                    call_count INTEGER,
+                    average_time REAL,
+                    cumulative_time REAL,
+                    memory_usage INTEGER,
+                    cpu_usage REAL,
+                    timestamp REAL
+                )
+            """)
+            
+            await self.db_connection.execute("""
+                CREATE TABLE IF NOT EXISTS benchmark_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT,
+                    duration REAL,
+                    operations_per_second REAL,
+                    average_latency REAL,
+                    p50_latency REAL,
+                    p95_latency REAL,
+                    p99_latency REAL,
+                    memory_peak INTEGER,
+                    cpu_average REAL,
+                    error_rate REAL,
+                    timestamp REAL
+                )
+            """)
+        except Exception as e:
+            self.logger.error(f"Failed to create profiling tables: {e}")
 
 
 class LoadTester:
@@ -656,7 +695,7 @@ def benchmark(iterations: int = 100, name: Optional[str] = None):
                 error_rate=0.0
             )
 
-            logging.info(f"Benchmark {func_name}: {result.operations_per_second".2f"} ops/sec")
+            logging.info(f"Benchmark {func_name}: {result.operations_per_second:.2f} ops/sec")
             return result
 
         if asyncio.iscoroutinefunction(func):
@@ -672,11 +711,11 @@ _profiler: Optional[PerformanceProfiler] = None
 _load_tester: Optional[LoadTester] = None
 _regression_detector: Optional[RegressionDetector] = None
 
-def get_profiler() -> PerformanceProfiler:
+def get_profiler(db_config: Optional[DatabaseConfig] = None) -> PerformanceProfiler:
     """Get global profiler instance"""
     global _profiler
     if _profiler is None:
-        _profiler = PerformanceProfiler()
+        _profiler = PerformanceProfiler(db_config)
     return _profiler
 
 def get_load_tester() -> LoadTester:

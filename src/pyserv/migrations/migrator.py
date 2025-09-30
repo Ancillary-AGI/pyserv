@@ -411,7 +411,9 @@ class Migrator:
         if from_version == 0:
             columns_sql = []
             for name, field in model_class._fields.items():
-                columns_sql.append(field.sql_definition(name, self.db_config))
+                sql_def = field.sql_definition(name, self.db_config)
+                if sql_def:  # Skip None values for MongoDB
+                    columns_sql.append(sql_def)
 
             # Handle different CREATE TABLE syntax for different databases
             if self.db_config.is_mysql:
@@ -445,12 +447,14 @@ class Migrator:
         # Columns to add
         for col_name in current_cols - previous_cols:
             field = model_class._fields[col_name]
-            if self.db_config.is_sqlite:
-                # SQLite can only add columns with ALTER TABLE
-                sql_statements.append(f"ALTER TABLE {table_name} ADD COLUMN {field.sql_definition(col_name, self.db_config)};")
-            else:
-                # PostgreSQL and MySQL can add columns with constraints
-                sql_statements.append(f"ALTER TABLE {table_name} ADD COLUMN {field.sql_definition(col_name, self.db_config)};")
+            sql_def = field.sql_definition(col_name, self.db_config)
+            if sql_def:
+                if self.db_config.is_sqlite:
+                    # SQLite can only add columns with ALTER TABLE
+                    sql_statements.append(f"ALTER TABLE {table_name} ADD COLUMN {sql_def};")
+                else:
+                    # PostgreSQL and MySQL can add columns with constraints
+                    sql_statements.append(f"ALTER TABLE {table_name} ADD COLUMN {sql_def};")
             operations['added_columns'].append({
                 'name': col_name,
                 'definition': Migration._serialize_field(field)
@@ -505,7 +509,9 @@ class Migrator:
                     # Handle type changes
                     if field.field_type != old_field.field_type:
                         if self.db_config.is_mysql:
-                            sql_statements.append(f"ALTER TABLE {table_name} MODIFY COLUMN {field.sql_definition(col_name, self.db_config)};")
+                            sql_def = field.sql_definition(col_name, self.db_config)
+                            if sql_def:
+                                sql_statements.append(f"ALTER TABLE {table_name} MODIFY COLUMN {sql_def};")
                         else:
                             sql_statements.append(f"ALTER TABLE {table_name} ALTER COLUMN {col_name} TYPE {field.field_type};")
 
@@ -571,7 +577,9 @@ class Migrator:
         # 1. Create temporary table with new schema
         columns_sql = []
         for name, field in current_columns.items():
-            columns_sql.append(field.sql_definition(name, self.db_config))
+            sql_def = field.sql_definition(name, self.db_config)
+            if sql_def:
+                columns_sql.append(sql_def)
 
         sql_statements.append(f"CREATE TABLE {temp_table} ({', '.join(columns_sql)});")
 
@@ -635,7 +643,9 @@ class Migrator:
         # Reverse removed columns (add them back with original definition)
         for column_info in operations.get('removed_columns', []):
             field = Migration._deserialize_field(column_info['definition'])
-            sql_statements.append(f"ALTER TABLE {table_name} ADD COLUMN {field.sql_definition(column_info['name'], self.db_config)};")
+            sql_def = field.sql_definition(column_info['name'], self.db_config)
+            if sql_def:
+                sql_statements.append(f"ALTER TABLE {table_name} ADD COLUMN {sql_def};")
 
         # Reverse index changes
         for index_info in operations.get('added_indexes', []):
@@ -667,7 +677,9 @@ class Migrator:
                 # Revert type changes
                 if old_field.field_type != current_field.field_type:
                     if self.db_config.is_mysql:
-                        sql_statements.append(f"ALTER TABLE {table_name} MODIFY COLUMN {old_field.sql_definition(col_name, self.db_config)};")
+                        sql_def = old_field.sql_definition(col_name, self.db_config)
+                        if sql_def:
+                            sql_statements.append(f"ALTER TABLE {table_name} MODIFY COLUMN {sql_def};")
                     else:
                         sql_statements.append(f"ALTER TABLE {table_name} ALTER COLUMN {col_name} TYPE {old_field.field_type};")
 

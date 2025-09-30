@@ -10,6 +10,11 @@ from .rbac import RoleBasedAccessControl
 from .rate_limiter import RateLimiter
 from .csrf import CSRFProtection
 from .headers import SecurityHeaders
+from .file_validation import (
+    FileValidator, BasicFileValidator, ClamAVValidator,
+    AWSGuardDutyValidator, CompositeValidator, SecurityManager,
+    get_security_manager
+)
 
 __all__ = [
     'EncryptionService',
@@ -17,5 +22,12 @@ __all__ = [
     'RoleBasedAccessControl',
     'RateLimiter',
     'CSRFProtection',
-    'SecurityHeaders'
+    'SecurityHeaders',
+    'FileValidator',
+    'BasicFileValidator', 
+    'ClamAVValidator',
+    'AWSGuardDutyValidator',
+    'CompositeValidator',
+    'SecurityManager',
+    'get_security_manager'
 ]

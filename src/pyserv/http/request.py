@@ -306,7 +306,6 @@ class Request:
         return None
 
     @property
-    
     def if_none_match(self) -> Optional[str]:
         """Get If-None-Match header."""
         return self.headers.get("if-none-match")
